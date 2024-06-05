@@ -24,7 +24,7 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
     check_free_opts(&matches.free).context(USAGE_HINT)?;
 
     if matches.opt_present("h") {
-        print_help(&program, opts);
+        print_help(program, opts);
         return Ok(());
     }
 
