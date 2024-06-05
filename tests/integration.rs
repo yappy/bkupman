@@ -1,5 +1,4 @@
 use anyhow::Result;
-use bkupman;
 
 // Return argv[0] (program name)
 // Panic unless argc == 1
