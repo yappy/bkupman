@@ -1,4 +1,5 @@
 use anyhow::Result;
+use tempdir::TempDir;
 
 // Return argv[0] (program name)
 // Panic unless argc == 1
@@ -16,6 +17,17 @@ fn print_help() -> Result<()> {
     bkupman::entry_point(&argv)?;
 
     let argv = [&get_argv0(), "-h"];
+    bkupman::entry_point(&argv)?;
+
+    Ok(())
+}
+
+#[test]
+fn init() -> Result<()> {
+    let dir = TempDir::new("example")?;
+    let dirstr = dir.path().to_str().unwrap();
+
+    let argv = [&get_argv0(), "-C", dirstr, "init"];
     bkupman::entry_point(&argv)?;
 
     Ok(())
