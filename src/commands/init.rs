@@ -6,8 +6,14 @@ use getopts::Options;
 use super::Config;
 
 fn check_empty_dir(dirpath: impl AsRef<Path>) -> Result<()> {
-    if let Some(entry) = (dirpath.as_ref().read_dir()?).next() {
-        let _ = entry?;
+    for entry in dirpath.as_ref().read_dir()? {
+        let entry = entry?;
+        // ignore hidden file/dir
+        if let Some(name) = entry.file_name().to_str() {
+            if name.starts_with('.') {
+                continue;
+            }
+        }
         bail!("Directory is not empty");
     }
 
