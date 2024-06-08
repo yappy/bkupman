@@ -18,7 +18,7 @@ fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
     })
 }
 
-fn print_help(program: &str, opts: &Options) {
+fn print_help_subcommands(program: &str, opts: &Options) {
     let brief = format!("Usage: {program} [options]");
     println!("{}", opts.usage(&brief));
 
@@ -27,7 +27,6 @@ fn print_help(program: &str, opts: &Options) {
     for &key in table.keys() {
         println!("    {key}");
     }
-    println!();
 }
 
 fn dispatch_subcommand(argv: &[String]) -> Result<()> {
@@ -61,7 +60,7 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
 
     // process main arguments
     if matches.opt_present("h") {
-        print_help(program, &opts);
+        print_help_subcommands(program, &opts);
         return Ok(());
     }
     if let Some(dir) = matches.opt_str("C") {
@@ -73,7 +72,7 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
     if !matches.free.is_empty() {
         dispatch_subcommand(&matches.free)
     } else {
-        print_help(program, &opts);
+        print_help_subcommands(program, &opts);
         bail!("Subcommand not specified")
     }
 }

@@ -4,6 +4,7 @@ use std::{fs::OpenOptions, path::Path};
 use anyhow::Result;
 use chrono::Local;
 use fs2::FileExt;
+use getopts::Options;
 use serde::{Deserialize, Serialize};
 
 pub mod inbox;
@@ -45,7 +46,7 @@ impl System {
 
 fn process_with_config_lock(
     dirpath: impl AsRef<Path>,
-    proc: impl FnOnce(Config) -> Result<Option<Config>>,
+    proc: impl FnOnce(&Path, Config) -> Result<Option<Config>>,
 ) -> Result<()> {
     let tomlpath = dirpath.as_ref().join(CONFIG_FILE_NAME);
     {
@@ -57,7 +58,7 @@ fn process_with_config_lock(
         let config: Config = toml::from_str(&toml)?;
 
         // if config is returned, overwrite (still locked)
-        if let Some(config) = proc(config)? {
+        if let Some(config) = proc(dirpath.as_ref(), config)? {
             let toml = toml::to_string(&config).unwrap();
             file.seek(std::io::SeekFrom::Start(0))?;
             file.set_len(0)?;
@@ -67,4 +68,9 @@ fn process_with_config_lock(
         // unlock and close
     }
     Ok(())
+}
+
+fn print_help(program: &str, opts: &Options) {
+    let brief = format!("Usage: {program} [options]");
+    print!("{}", opts.usage(&brief));
 }

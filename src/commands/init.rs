@@ -43,7 +43,7 @@ pub fn entry(cmd: &str, args: &[String]) -> Result<()> {
 
     let matches = opts.parse(args).context(USAGE_HINT)?;
     if matches.opt_present("h") {
-        crate::print_help(cmd, &opts);
+        super::print_help(cmd, &opts);
         return Ok(());
     }
 
