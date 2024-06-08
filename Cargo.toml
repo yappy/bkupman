@@ -10,6 +10,8 @@ panic = "abort"
 
 [dependencies]
 anyhow = "1.0.86"
+chrono = "0.4.38"
+fs2 = "0.4.3"
 getopts = "0.2.21"
 log = "0.4.21"
 serde = { version = "1.0.203", features = ["derive"] }

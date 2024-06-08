@@ -12,7 +12,8 @@ fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
 
     TABLE.get_or_init(|| {
         let mut table: BTreeMap<&'static str, CommandFunc> = BTreeMap::new();
-        table.insert("init", Box::new(commands::init::init));
+        table.insert("init", Box::new(commands::init::entry));
+        table.insert("inbox", Box::new(commands::inbox::entry));
         table
     })
 }
