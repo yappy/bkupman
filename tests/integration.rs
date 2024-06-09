@@ -5,10 +5,7 @@ use tempdir::TempDir;
 
 // Return argv[0] (program name)
 fn get_argv0() -> String {
-    let mut args = std::env::args();
-    let argv0 = args.next().unwrap();
-
-    argv0
+    std::env::args().next().unwrap()
 }
 
 #[test]
