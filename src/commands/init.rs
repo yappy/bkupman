@@ -34,7 +34,7 @@ fn init_dir(dirpath: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
-pub fn entry(cmd: &str, args: &[String]) -> Result<()> {
+pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     const USAGE_HINT: &str = "--help or -h to show usage";
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
 
@@ -47,8 +47,8 @@ pub fn entry(cmd: &str, args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    check_empty_dir(".")?;
-    init_dir(".")?;
+    check_empty_dir(basedir)?;
+    init_dir(basedir)?;
 
     Ok(())
 }
@@ -61,8 +61,7 @@ mod tests {
     #[test]
     fn test_init() -> Result<()> {
         let tmpdir = TempDir::new(".")?;
-        std::env::set_current_dir(&tmpdir)?;
-        check_empty_dir(".")?;
+        check_empty_dir(&tmpdir)?;
         init_dir(&tmpdir)?;
 
         Ok(())

@@ -1,11 +1,11 @@
 mod commands;
 
-use std::{collections::BTreeMap, sync::OnceLock};
+use std::{collections::BTreeMap, path::Path, sync::OnceLock};
 
 use anyhow::{anyhow, bail, Context, Result};
 use getopts::Options;
 
-type CommandFunc = Box<dyn Fn(&str, &[String]) -> Result<()> + Send + Sync + 'static>;
+type CommandFunc = Box<dyn Fn(&Path, &str, &[String]) -> Result<()> + Send + Sync + 'static>;
 
 fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
     static TABLE: OnceLock<BTreeMap<&str, CommandFunc>> = OnceLock::new();
@@ -29,14 +29,14 @@ fn print_help_subcommands(program: &str, opts: &Options) {
     }
 }
 
-fn dispatch_subcommand(argv: &[String]) -> Result<()> {
+fn dispatch_subcommand(basedir: impl AsRef<Path>, argv: &[String]) -> Result<()> {
     let table = dispatch_table();
     let argv0: &str = &argv[0];
     let func = table
         .get(argv0)
         .ok_or(anyhow!("Subcommand not found: {argv0}"))?;
 
-    func(argv0, &argv[1..])
+    func(basedir.as_ref(), argv0, &argv[1..])
 }
 
 pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
@@ -63,14 +63,17 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
         print_help_subcommands(program, &opts);
         return Ok(());
     }
-    if let Some(dir) = matches.opt_str("C") {
-        println!("Set current directory: {dir}");
+    let basedir = if let Some(dir) = matches.opt_str("C") {
+        println!("Set base directory: {dir}");
         println!();
-        std::env::set_current_dir(dir).context("Changing directory failed")?;
-    }
+
+        dir
+    } else {
+        ".".to_string()
+    };
 
     if !matches.free.is_empty() {
-        dispatch_subcommand(&matches.free)
+        dispatch_subcommand(basedir, &matches.free)
     } else {
         print_help_subcommands(program, &opts);
         bail!("Subcommand not specified")

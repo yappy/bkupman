@@ -81,7 +81,7 @@ fn process_inbox(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
     Ok(Some(config))
 }
 
-pub fn entry(cmd: &str, args: &[String]) -> Result<()> {
+pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     const USAGE_HINT: &str = "--help or -h to show usage";
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
 
@@ -94,7 +94,7 @@ pub fn entry(cmd: &str, args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    super::process_with_config_lock(".", process_inbox)?;
+    super::process_with_config_lock(basedir, process_inbox)?;
 
     Ok(())
 }
