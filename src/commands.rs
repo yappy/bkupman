@@ -49,6 +49,11 @@ impl System {
     }
 }
 
+fn print_help(program: &str, opts: &Options) {
+    let brief = format!("Usage: {program} [options]");
+    print!("{}", opts.usage(&brief));
+}
+
 fn process_with_config_lock(
     dirpath: impl AsRef<Path>,
     proc: impl FnOnce(&Path, Config) -> Result<Option<Config>>,
@@ -75,7 +80,14 @@ fn process_with_config_lock(
     Ok(())
 }
 
-fn print_help(program: &str, opts: &Options) {
-    let brief = format!("Usage: {program} [options]");
-    print!("{}", opts.usage(&brief));
+fn with_force(force: bool, proc: impl FnOnce() -> Result<()>) -> Result<()> {
+    let res = proc();
+    if force {
+        if let Err(err) = res {
+            println!("{:#}", err);
+        }
+        Ok(())
+    } else {
+        Ok(res?)
+    }
 }
