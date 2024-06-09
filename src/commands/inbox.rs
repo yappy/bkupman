@@ -2,8 +2,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use getopts::Options;
+use md5::{Digest, Md5};
+use tokio::io::AsyncReadExt;
 use tokio::runtime::Runtime;
 
 use super::{Config, DIRNAME_INBOX};
@@ -17,7 +19,7 @@ struct ProcessStat {
 async fn process_dir(stat: Arc<ProcessStat>, dirpath: PathBuf) {
     println!("Process {}", dirpath.to_string_lossy());
 
-    // get directory iterator
+    // get directory iterator (sync)
     let iter = match dirpath.read_dir() {
         Ok(iter) => iter,
         Err(err) => {
@@ -27,7 +29,7 @@ async fn process_dir(stat: Arc<ProcessStat>, dirpath: PathBuf) {
         }
     };
 
-    // for each entry
+    // for each entry (sync)
     let mut handles = Vec::new();
     for entry in iter {
         let entry = match entry {
@@ -42,7 +44,7 @@ async fn process_dir(stat: Arc<ProcessStat>, dirpath: PathBuf) {
         let path = entry.path();
         if path.is_file() {
             // execute on a separated thread
-            let h = tokio::spawn(process_file(Arc::clone(&stat), path));
+            let h = tokio::spawn(process_file(path));
             handles.push(h);
         } else {
             println!("Not a regular file {}", path.to_string_lossy());
@@ -50,20 +52,80 @@ async fn process_dir(stat: Arc<ProcessStat>, dirpath: PathBuf) {
         }
     }
     for h in handles {
-        h.await.unwrap();
+        // JoinError happens only if cancel or panic
+        match h.await.expect("unexpected JoinError") {
+            Ok(()) => {
+                stat.processed.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(err) => {
+                println!("{:#}", err);
+                stat.error.fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
 }
 
-async fn process_file(stat: Arc<ProcessStat>, filepath: PathBuf) {
-    println!("Process start: {}", filepath.to_string_lossy());
+fn str_to_md5(s: &str) -> Result<[u8; super::MD5LEN]> {
+    ensure!(s.len() == super::MD5STRLEN);
 
-    let sec = (stat.processed.load(Ordering::Relaxed) % 5) as u64;
-    tokio::time::sleep(std::time::Duration::from_secs(sec)).await;
+    let mut hash = [0; super::MD5LEN];
+    for (i, x) in hash.iter_mut().enumerate() {
+        let b = u8::from_str_radix(&s[(i * 2)..=(i * 2 + 1)], 16)?;
+        *x = b;
+    }
 
-    println!("Process end: {}", filepath.to_string_lossy());
+    Ok(hash)
+}
+
+async fn process_file(filepath: PathBuf) -> Result<()> {
+    const BUFSIZE: usize = 64 * 1024;
+
+    // only UTF-8 path is valid
+    filepath
+        .to_str()
+        .ok_or_else(|| anyhow!("Invalid path: {}", filepath.to_string_lossy()))?;
+
+    // skip "*.md5sum"
+    if let Some(rawext) = filepath.extension() {
+        let ext = rawext.to_str().unwrap();
+        if ext == super::MD5EXT {
+            return Ok(());
+        }
+    }
+
+    println!("File: {}", filepath.to_string_lossy());
+
+    let filename = filepath.file_name().unwrap().to_str().unwrap();
+    let md5filename = format!("{}.{}", filename, super::MD5EXT);
+    let md5path = filepath.with_file_name(md5filename);
+
+    // read md5 from text
+    let mut md5str = tokio::fs::read_to_string(&md5path)
+        .await
+        .with_context(|| format!("Cannot read {}", md5path.to_string_lossy()))?;
+    md5str.truncate(super::MD5STRLEN);
+    let md5 = str_to_md5(&md5str)
+        .with_context(|| format!("Failed to convert to MD5 {}", md5path.to_string_lossy()))?;
+
+    // read the file and calc md5
+    let mut fin = tokio::fs::File::open(&filepath).await?;
+    let mut buf = vec![0u8; BUFSIZE];
+    let mut hasher = Md5::new();
+    loop {
+        let read_size = fin.read(&mut buf).await?;
+        if read_size == 0 {
+            break;
+        }
+        hasher.update(&buf[..read_size]);
+    }
+    let result = hasher.finalize();
+
+    // verify md5
+    ensure!(*result == md5, "MD5 unmatch");
 
     // TODO
-    stat.processed.fetch_add(1, Ordering::Relaxed);
+    println!("OK: {}", filepath.to_string_lossy());
+    Ok(())
 }
 
 fn process_inbox(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
@@ -72,6 +134,7 @@ fn process_inbox(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
     let stat: Arc<ProcessStat> = Arc::new(Default::default());
     let rt = Runtime::new()?;
     rt.block_on(process_dir(Arc::clone(&stat), inbox_path));
+    drop(rt);
 
     println!("Processed: {}", stat.processed.load(Ordering::Relaxed));
     println!("Error    : {}", stat.error.load(Ordering::Relaxed));

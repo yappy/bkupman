@@ -15,6 +15,11 @@ const DIRNAME_INBOX: &str = "inbox";
 const DIRNAME_REPO: &str = "repo";
 const DIRNAME_CRYPT: &str = "crypt";
 
+const MD5EXT: &str = "md5sum";
+// 128 bit
+const MD5LEN: usize = 16;
+const MD5STRLEN: usize = 32;
+
 const CONFIG_VERSION: u32 = 1;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
