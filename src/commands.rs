@@ -1,10 +1,12 @@
+use std::collections::BTreeMap;
 use std::io::prelude::*;
 use std::{fs::OpenOptions, path::Path};
 
-use anyhow::Result;
+use anyhow::{anyhow, ensure, Result};
 use chrono::Local;
 use fs2::FileExt;
 use getopts::Options;
+use regex::{Match, Regex};
 use serde::{Deserialize, Serialize};
 
 pub mod inbox;
@@ -34,6 +36,11 @@ struct System {
     updated: String,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Repository {
+    entries: BTreeMap<String, Vec<String>>,
+}
+
 impl Default for System {
     fn default() -> Self {
         Self {
@@ -54,6 +61,11 @@ fn print_help(program: &str, opts: &Options) {
     print!("{}", opts.usage(&brief));
 }
 
+/// Do process with locking config file.
+///
+/// 1. Open and exclusive-lock dirpath/config.toml
+/// 1. Call proc
+/// 1. If proc returns Some, overwrite to dirpath/config.toml
 fn process_with_config_lock(
     dirpath: impl AsRef<Path>,
     proc: impl FnOnce(&Path, Config) -> Result<Option<Config>>,
@@ -74,7 +86,6 @@ fn process_with_config_lock(
             file.set_len(0)?;
             file.write_all(toml.as_bytes())?;
         }
-
         // unlock and close
     }
     Ok(())
@@ -89,5 +100,48 @@ fn with_force(force: bool, proc: impl FnOnce() -> Result<()>) -> Result<()> {
         Ok(())
     } else {
         Ok(res?)
+    }
+}
+
+fn split_filename(name: &str) -> Result<(&str, &str, &str)> {
+    fn slice<'a>(name: &'a str, m: Option<Match>) -> &'a str {
+        if let Some(m) = m {
+            &name[m.start()..m.start() + m.len()]
+        } else {
+            ""
+        }
+    }
+
+    // *YYYYDDMM[hhmmss].*
+    // (not-dot)+ (num){8,14} "." (any)*
+    let re = Regex::new(r"^([^.]+)([0-9]{8,14})\.(.*)$").unwrap();
+    let caps = re
+        .captures(name)
+        .ok_or_else(|| anyhow!("Invalid file name: {name}"))?;
+
+    let s1 = slice(name, caps.get(1)).trim_end_matches(['-', '_']);
+    ensure!(!s1.is_empty(), "Invalid file name: {name}");
+
+    Ok((s1, slice(name, caps.get(2)), slice(name, caps.get(3))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_filename() -> Result<()> {
+        let (a, b, c) = split_filename("hello-world-_-_-20240101.tar.bz2")?;
+        assert_eq!(a, "hello-world");
+        assert_eq!(b, "20240101");
+        assert_eq!(c, "tar.bz2");
+
+        let r = split_filename(".gitignore");
+        assert!(r.is_err());
+
+        let r = split_filename("----20240101.tar.bz2");
+        assert!(r.is_err());
+
+        Ok(())
     }
 }
