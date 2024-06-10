@@ -1,6 +1,7 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, ensure, Context, Result};
 use getopts::Options;
@@ -8,19 +9,22 @@ use md5::{Digest, Md5};
 use tokio::io::AsyncReadExt;
 use tokio::runtime::Runtime;
 
+use crate::commands::DIRNAME_REPO;
+
 use super::{Config, DIRNAME_INBOX};
 
 #[derive(Default)]
 struct ProcessStat {
-    processed: AtomicU32,
+    /// (tag, filename)
+    processed: Mutex<Vec<(String, String)>>,
     error: AtomicU32,
 }
 
-async fn process_dir(stat: Arc<ProcessStat>, dirpath: PathBuf) {
-    println!("Process {}", dirpath.to_string_lossy());
+async fn process_dir(stat: Arc<ProcessStat>, inbox_path: &Path, repo_path: &Path) {
+    println!("Process {}", inbox_path.to_string_lossy());
 
     // get directory iterator (sync)
-    let iter = match dirpath.read_dir() {
+    let iter = match inbox_path.read_dir() {
         Ok(iter) => iter,
         Err(err) => {
             println!("{err}");
@@ -42,9 +46,10 @@ async fn process_dir(stat: Arc<ProcessStat>, dirpath: PathBuf) {
         };
 
         let path = entry.path();
+        let repo_path = PathBuf::from(repo_path);
         if path.is_file() {
             // execute on a separated thread
-            let h = tokio::spawn(process_file(path));
+            let h = tokio::spawn(async move { process_file(&path, &repo_path).await });
             handles.push(h);
         } else {
             println!("Not a regular file {}", path.to_string_lossy());
@@ -54,8 +59,11 @@ async fn process_dir(stat: Arc<ProcessStat>, dirpath: PathBuf) {
     for h in handles {
         // JoinError happens only if cancel or panic
         match h.await.expect("unexpected JoinError") {
-            Ok(()) => {
-                stat.processed.fetch_add(1, Ordering::Relaxed);
+            Ok(result) => {
+                let mut p = stat.processed.lock().unwrap();
+                if let Some(tuple) = result {
+                    p.push(tuple);
+                }
             }
             Err(err) => {
                 println!("{:#}", err);
@@ -77,27 +85,28 @@ fn str_to_md5(s: &str) -> Result<[u8; super::MD5LEN]> {
     Ok(hash)
 }
 
-async fn process_file(filepath: PathBuf) -> Result<()> {
+async fn process_file(file_path: &Path, repo_path: &Path) -> Result<Option<(String, String)>> {
     const BUFSIZE: usize = 64 * 1024;
 
     // only UTF-8 path is valid
-    filepath
+    file_path
         .to_str()
-        .ok_or_else(|| anyhow!("Invalid path: {}", filepath.to_string_lossy()))?;
+        .ok_or_else(|| anyhow!("Invalid path: {}", file_path.to_string_lossy()))?;
 
     // skip "*.md5sum"
-    if let Some(rawext) = filepath.extension() {
+    if let Some(rawext) = file_path.extension() {
         let ext = rawext.to_str().unwrap();
         if ext == super::MD5EXT {
-            return Ok(());
+            return Ok(None);
         }
     }
 
-    println!("File: {}", filepath.to_string_lossy());
+    println!("File: {}", file_path.to_string_lossy());
 
-    let filename = filepath.file_name().unwrap().to_str().unwrap();
+    let filename = file_path.file_name().unwrap().to_str().unwrap();
+    let (tag, date, ext) = super::split_filename(filename)?;
     let md5filename = format!("{}.{}", filename, super::MD5EXT);
-    let md5path = filepath.with_file_name(md5filename);
+    let md5path = file_path.with_file_name(md5filename);
 
     // read md5 from text
     let mut md5str = tokio::fs::read_to_string(&md5path)
@@ -108,7 +117,7 @@ async fn process_file(filepath: PathBuf) -> Result<()> {
         .with_context(|| format!("Failed to convert to MD5 {}", md5path.to_string_lossy()))?;
 
     // read the file and calc md5
-    let mut fin = tokio::fs::File::open(&filepath).await?;
+    let mut fin = tokio::fs::File::open(&file_path).await?;
     let mut buf = vec![0u8; BUFSIZE];
     let mut hasher = Md5::new();
     loop {
@@ -122,24 +131,56 @@ async fn process_file(filepath: PathBuf) -> Result<()> {
 
     // verify md5
     ensure!(*result == md5, "MD5 unmatch");
+    println!("MD5 verify OK: {}", file_path.to_string_lossy());
 
-    // TODO
-    println!("OK: {}", filepath.to_string_lossy());
-    Ok(())
+    // copy
+    let destdir = repo_path.join(tag);
+    tokio::fs::create_dir_all(&destdir).await?;
+    let dest_file_name = format!("{tag}_{date}.{ext}");
+    let destfile = destdir.join(&dest_file_name);
+    let size = tokio::fs::copy(&file_path, &destfile).await?;
+    println!(
+        "Copy OK: {} => {} ({} B)",
+        file_path.to_string_lossy(),
+        destfile.to_string_lossy(),
+        size
+    );
+
+    tokio::fs::remove_file(&file_path).await?;
+    println!("Delete OK: {}", file_path.to_string_lossy());
+
+    Ok(Some((tag.to_string(), dest_file_name)))
 }
 
 fn process_inbox(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
     let inbox_path = dirpath.join(DIRNAME_INBOX);
+    let repo_path = dirpath.join(DIRNAME_REPO);
 
     let stat: Arc<ProcessStat> = Arc::new(Default::default());
     let rt = Runtime::new()?;
-    rt.block_on(process_dir(Arc::clone(&stat), inbox_path));
+    rt.block_on(process_dir(Arc::clone(&stat), &inbox_path, &repo_path));
     drop(rt);
 
-    println!("Processed: {}", stat.processed.load(Ordering::Relaxed));
+    let processed = stat.processed.lock().unwrap();
+    println!("Processed: {}", processed.len());
     println!("Error    : {}", stat.error.load(Ordering::Relaxed));
 
     // update toml
+    for (tag, filename) in processed.iter() {
+        match config.repository.entries.get_mut(tag) {
+            Some(set) => {
+                // insert to the set
+                set.insert(filename.clone());
+            }
+            None => {
+                // create a new set and insert to it
+                // insert to the map
+                let mut set = BTreeSet::new();
+                set.insert(filename.clone());
+                config.repository.entries.insert(tag.clone(), set);
+            }
+        }
+    }
     config.system.update();
     Ok(Some(config))
 }

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
 use std::{fs::OpenOptions, path::Path};
 
@@ -28,6 +28,8 @@ const CONFIG_VERSION: u32 = 1;
 struct Config {
     #[serde(default)]
     system: System,
+    #[serde(default)]
+    repository: Repository,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,7 +40,7 @@ struct System {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Repository {
-    entries: BTreeMap<String, Vec<String>>,
+    entries: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Default for System {
