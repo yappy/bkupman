@@ -45,6 +45,33 @@ pub fn parse_size(s: &str) -> Result<u64> {
     num.checked_mul(unit).ok_or_else(|| anyhow!("overflow"))
 }
 
+// 128 bit
+pub const MD5LEN: usize = 16;
+pub const MD5STRLEN: usize = 32;
+
+pub fn str_to_md5(s: &str) -> Result<[u8; MD5LEN]> {
+    ensure!(s.len() == MD5STRLEN);
+
+    let mut hash = [0; MD5LEN];
+    for (i, x) in hash.iter_mut().enumerate() {
+        let b = u8::from_str_radix(&s[(i * 2)..=(i * 2 + 1)], 16)?;
+        *x = b;
+    }
+
+    Ok(hash)
+}
+
+pub fn md5_to_str(md5: &[u8]) -> String {
+    assert_eq!(md5.len(), MD5LEN);
+
+    let mut result = String::with_capacity(MD5STRLEN);
+    for &b in md5 {
+        result += &format!("{:0>2x}", b);
+    }
+
+    result
+}
+
 pub fn seed64() -> u64 {
     rand::random()
 }
@@ -105,6 +132,23 @@ mod tests {
         assert!(parse_size("123x").is_err());
         assert!(parse_size(&(usize::MAX.to_string() + "0")).is_err());
         assert!(parse_size(&(usize::MAX.to_string() + "k")).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_md5() -> Result<()> {
+        let s = "0123456789abcdef0123456789abcdef";
+        let b = [
+            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
+            0xcd, 0xef,
+        ];
+
+        let x = str_to_md5(s)?;
+        assert_eq!(x, b);
+
+        let y = md5_to_str(&b);
+        assert_eq!(y, s);
 
         Ok(())
     }

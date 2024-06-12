@@ -10,6 +10,7 @@ use tokio::io::AsyncReadExt;
 use tokio::runtime::Runtime;
 
 use super::{Config, RepositoryFile};
+use crate::util;
 
 #[derive(Default)]
 struct ProcessStat {
@@ -71,18 +72,6 @@ async fn process_dir(stat: Arc<ProcessStat>, inbox_path: &Path, repo_path: &Path
     }
 }
 
-fn str_to_md5(s: &str) -> Result<[u8; super::MD5LEN]> {
-    ensure!(s.len() == super::MD5STRLEN);
-
-    let mut hash = [0; super::MD5LEN];
-    for (i, x) in hash.iter_mut().enumerate() {
-        let b = u8::from_str_radix(&s[(i * 2)..=(i * 2 + 1)], 16)?;
-        *x = b;
-    }
-
-    Ok(hash)
-}
-
 async fn process_file(
     file_path: &Path,
     repo_path: &Path,
@@ -113,8 +102,8 @@ async fn process_file(
     let mut md5str = tokio::fs::read_to_string(&md5path)
         .await
         .with_context(|| format!("Cannot read {}", md5path.to_string_lossy()))?;
-    md5str.truncate(super::MD5STRLEN);
-    let md5 = str_to_md5(&md5str)
+    md5str.truncate(util::MD5STRLEN);
+    let md5 = util::str_to_md5(&md5str)
         .with_context(|| format!("Failed to convert to MD5 {}", md5path.to_string_lossy()))?;
 
     // read the file and calc md5

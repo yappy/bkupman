@@ -10,32 +10,38 @@ use super::Config;
 use crate::util;
 
 /// Notice: random fill is very slow on debug build.
-async fn create_test_file(path: PathBuf, size: u64, random: bool) -> Result<()> {
+async fn create_test_file(path: PathBuf, md5path: PathBuf, size: u64, random: bool) -> Result<()> {
     println!("Create {} size={size} random={random}", path.display());
 
-    let mut file = tokio::fs::File::create(&path).await?;
-    let mut rest = size as usize;
-    let mut buf = vec![0; 64 * 1024];
     let mut hasher = Md5::new();
-    if random {
-        let mut state = util::seed64();
-        while rest > 0 {
-            state = util::xorshift64_fill(&mut buf, state);
-            let wsize = rest.min(buf.len());
-            file.write(&buf[0..wsize]).await?;
-            rest -= wsize;
-            hasher.update(&buf[0..wsize]);
-        }
-    } else {
-        file.set_len(size).await?;
-        while rest > 0 {
-            let wsize = rest.min(buf.len());
-            rest -= wsize;
-            hasher.update(&buf[0..wsize]);
+    {
+        let mut file = tokio::fs::File::create(&path).await?;
+        let mut rest = size as usize;
+        let mut buf = vec![0; 64 * 1024];
+        if random {
+            let mut state = util::seed64();
+            while rest > 0 {
+                state = util::xorshift64_fill(&mut buf, state);
+                let wsize = rest.min(buf.len());
+                file.write_all(&buf[0..wsize]).await?;
+                rest -= wsize;
+                hasher.update(&buf[0..wsize]);
+            }
+        } else {
+            file.set_len(size).await?;
+            while rest > 0 {
+                let wsize = rest.min(buf.len());
+                rest -= wsize;
+                hasher.update(&buf[0..wsize]);
+            }
         }
     }
-    drop(file);
-    let result = hasher.finalize();
+    let md5 = hasher.finalize();
+    {
+        let md5str = util::md5_to_str(&md5);
+        let mut file = tokio::fs::File::create(&md5path).await?;
+        file.write_all(md5str.as_bytes()).await?;
+    }
 
     println!("OK: {}", path.display());
     Ok(())
@@ -57,8 +63,10 @@ fn process_test_file(
             for i in 0..count {
                 let dt = Local::now().format("%Y%m%d%H%M%S").to_string();
                 let name = format!("testfile-{i:0>5}_{}.bin", dt);
+                let md5name = format!("{name}.{}", super::MD5EXT);
                 let path = inbox_path.join(name);
-                let h = tokio::spawn(create_test_file(path, size, random));
+                let md5path = inbox_path.join(md5name);
+                let h = tokio::spawn(create_test_file(path, md5path, size, random));
                 handles.push(h);
             }
             for h in handles {
