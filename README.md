@@ -13,7 +13,7 @@ VM 跨ぐとファイルシステムが遅いし。。
 
 ### ファイルツリー同期
 
-どれがいいのかは何とも言えない。
+要は rsync を Windows で行いたいのだが、どれがいいのかは何とも言えない。
 Robocopy で我慢できたらそれがいいのかもしれない。
 
 #### Robocopy
@@ -21,7 +21,7 @@ Robocopy で我慢できたらそれがいいのかもしれない。
 Vista あたりから Windows に最初から入っているらしい。
 元々 Microsoft 内で海を越えて大量のデータを同期するために開発されたツールらしい。
 適当に使うとアクセス制限に引っかかったときに無限リトライしたりする。
-頑張って試行錯誤してよさげなコマンドラインを見つける必要がある。
+頑張って試行錯誤してよさげなコマンドラインパラメータを見つける必要がある。
 
 #### SyncToy
 
@@ -48,9 +48,59 @@ zip は ZIP64 (>2GB) 対応と UTF-8 対応が怪しいレガシーシステム�
 最近は 2GB 問題もクリアして大丈夫そうに見えるが、コマンドラインからの呼び出し方が
 分からない部分がダメ。
 
+2024 年、Windows 11 の先端付近では zip, 7z, tar へのサポートがかなり進んでいる
+らしい。
+
+#### tar
+
+<https://techcommunity.microsoft.com/t5/containers/tar-and-curl-come-to-windows/ba-p/382409>
+
+実は tar (と curl) が標準で Windows に入るようになっている。
+Windows 10 のあるバージョンからだが、入っていないバージョンは既にサポートが切れている。
+
+PowerShell で難しいことをごちゃごちゃやればできたといえばできたが、
+本当に求められていたものを今の Microsoft は理解している
+(cmd.exe からも使用可能)。
+
+libarchive を使用しており、zip も展開できる(できた)。
+ただしヘルプには gzip/bzip2/xz/lzma しか記載がなく、
+zip で圧縮する方法があるのかは不明。
+別に zip にこだわらなくても tar.gz なりなんなりにすればよい気がしてくる。
+
+```text
+> tar --version
+bsdtar 3.5.2 - libarchive 3.5.2 zlib/1.2.5.f-ipp
+
+> tar --help
+tar.exe(bsdtar): manipulate archive files
+First option must be a mode specifier:
+  -c Create  -r Add/Replace  -t List  -u Update  -x Extract
+Common Options:
+  -b #  Use # 512-byte records per I/O block
+  -f <filename>  Location of archive (default \\.\tape0)
+  -v    Verbose
+  -w    Interactive
+Create: tar.exe -c [options] [<file> | <dir> | @<archive> | -C <dir> ]
+  <file>, <dir>  add these items to archive
+  -z, -j, -J, --lzma  Compress archive with gzip/bzip2/xz/lzma
+  --format {ustar|pax|cpio|shar}  Select archive format
+  --exclude <pattern>  Skip files that match pattern
+  -C <dir>  Change to <dir> before processing remaining files
+  @<archive>  Add entries from <archive> to output
+List: tar.exe -t [options] [<patterns>]
+  <patterns>  If specified, list only entries that match
+Extract: tar.exe -x [options] [<patterns>]
+  <patterns>  If specified, extract only entries that match
+  -k    Keep (don't overwrite) existing files
+  -m    Don't restore modification times
+  -O    Write entries to stdout, don't restore to disk
+  -p    Restore permissions (including ACLs, owner, file flags)
+bsdtar 3.5.2 - libarchive 3.5.2 zlib/1.2.5.f-ipp
+```
+
 #### 7-zip
 
-現状多分これが一番いい。
+zip ツールの中では現状多分これが一番いい。
 winget でインストール可能。
 
 #### Powershell (非推奨)
@@ -116,11 +166,13 @@ Windows の cron みたいなもの。
 ファイルシステムよりもネットワークの方が非常に遅いため、
 WSL の rsync を使ってよさそう。
 
+もちろんネットワークマウントして "ファイルツリー同期" と同じツールを使う手もある。
+
 #### rsync
 
 ssh 越しにも使える安心の同期ツール。
 
-#### scp
+#### scp (非推奨)
 
 ssh 越しに圧縮ファイルを1個転送するだけなら scp でよさそうな気もするが、
 近年脆弱性が見つかっており、コード全体の設計が古めかしく根本解決が難しそうな雰囲気。
