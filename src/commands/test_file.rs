@@ -3,22 +3,41 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use chrono::Local;
 use getopts::Options;
-use tokio::runtime::Runtime;
+use md5::{Digest, Md5};
+use tokio::{io::AsyncWriteExt, runtime::Runtime};
 
 use super::Config;
 use crate::util;
 
+/// Notice: random fill is very slow on debug build.
 async fn create_test_file(path: PathBuf, size: u64, random: bool) -> Result<()> {
     println!("Create {} size={size} random={random}", path.display());
 
-    let file = tokio::fs::File::create(&path).await?;
+    let mut file = tokio::fs::File::create(&path).await?;
+    let mut rest = size as usize;
+    let mut buf = vec![0; 64 * 1024];
+    let mut hasher = Md5::new();
     if random {
-        todo!()
+        let mut state = util::seed64();
+        while rest > 0 {
+            state = util::xorshift64_fill(&mut buf, state);
+            let wsize = rest.min(buf.len());
+            file.write(&buf[0..wsize]).await?;
+            rest -= wsize;
+            hasher.update(&buf[0..wsize]);
+        }
     } else {
         file.set_len(size).await?;
+        while rest > 0 {
+            let wsize = rest.min(buf.len());
+            rest -= wsize;
+            hasher.update(&buf[0..wsize]);
+        }
     }
     drop(file);
+    let result = hasher.finalize();
 
+    println!("OK: {}", path.display());
     Ok(())
 }
 

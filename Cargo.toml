@@ -15,6 +15,7 @@ fs2 = "0.4.3"
 getopts = "0.2.21"
 log = "0.4.21"
 md-5 = "0.10.6"
+rand = "0.8.5"
 regex = "1.10.5"
 serde = { version = "1.0.203", features = ["derive"] }
 tokio = { version = "1.38.0", features = ["fs", "macros", "rt-multi-thread", "time", "io-util"] }

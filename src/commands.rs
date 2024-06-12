@@ -16,14 +16,6 @@ pub mod test_file;
 type CommandFunc = Box<dyn Fn(&Path, &str, &[String]) -> Result<()> + Send + Sync + 'static>;
 type CommandMap = BTreeMap<&'static str, CommandFunc>;
 
-#[cfg(debug_assertions)]
-fn add_debug_commands(table: &mut CommandMap) {
-    table.insert("test-file", Box::new(test_file::entry));
-}
-
-#[cfg(not(debug_assertions))]
-fn add_debug_commands(_table: &mut CommandMap) {}
-
 pub fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
     static TABLE: OnceLock<CommandMap> = OnceLock::new();
 
@@ -31,7 +23,8 @@ pub fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
         let mut table: CommandMap = BTreeMap::new();
         table.insert("init", Box::new(init::entry));
         table.insert("inbox", Box::new(inbox::entry));
-        add_debug_commands(&mut table);
+
+        table.insert("test-file", Box::new(test_file::entry));
 
         table
     })

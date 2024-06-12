@@ -45,6 +45,32 @@ pub fn parse_size(s: &str) -> Result<u64> {
     num.checked_mul(unit).ok_or_else(|| anyhow!("overflow"))
 }
 
+pub fn seed64() -> u64 {
+    rand::random()
+}
+
+pub fn xorshift64(mut x: u64) -> u64 {
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+
+    x
+}
+
+pub fn xorshift64_fill(v: &mut [u8], state: u64) -> u64 {
+    assert!(v.len() % 8 == 0);
+
+    let mut x = state;
+    for i in (0..v.len()).step_by(8) {
+        x = xorshift64(x);
+        for (k, &x) in x.to_ne_bytes().iter().enumerate() {
+            v[i + k] = x;
+        }
+    }
+
+    x
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
