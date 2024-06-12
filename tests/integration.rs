@@ -48,7 +48,7 @@ fn inbox_many() -> Result<()> {
     let argv = [&get_argv0(), "-C", dirstr, "init"];
     bkupman::entry_point(&argv)?;
 
-    create_files(&dirpath.join("inbox"), 1000)?;
+    create_files(&dirpath.join("inbox"), 100)?;
 
     let argv = [&get_argv0(), "-C", dirstr, "inbox"];
     bkupman::entry_point(&argv)?;

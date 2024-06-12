@@ -1,28 +1,16 @@
 mod commands;
+mod util;
 
-use std::{collections::BTreeMap, path::Path, sync::OnceLock};
+use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Result};
 use getopts::Options;
-
-type CommandFunc = Box<dyn Fn(&Path, &str, &[String]) -> Result<()> + Send + Sync + 'static>;
-
-fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
-    static TABLE: OnceLock<BTreeMap<&str, CommandFunc>> = OnceLock::new();
-
-    TABLE.get_or_init(|| {
-        let mut table: BTreeMap<&'static str, CommandFunc> = BTreeMap::new();
-        table.insert("init", Box::new(commands::init::entry));
-        table.insert("inbox", Box::new(commands::inbox::entry));
-        table
-    })
-}
 
 fn print_help_subcommands(program: &str, opts: &Options) {
     let brief = format!("Usage: {program} [options]");
     println!("{}", opts.usage(&brief));
 
-    let table = dispatch_table();
+    let table = commands::dispatch_table();
     println!("Subcommands:");
     for &key in table.keys() {
         println!("    {key}");
@@ -30,7 +18,7 @@ fn print_help_subcommands(program: &str, opts: &Options) {
 }
 
 fn dispatch_subcommand(basedir: impl AsRef<Path>, argv: &[String]) -> Result<()> {
-    let table = dispatch_table();
+    let table = commands::dispatch_table();
     let argv0: &str = &argv[0];
     let func = table
         .get(argv0)

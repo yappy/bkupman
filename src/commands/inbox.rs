@@ -9,14 +9,12 @@ use md5::{Digest, Md5};
 use tokio::io::AsyncReadExt;
 use tokio::runtime::Runtime;
 
-use crate::commands::DIRNAME_REPO;
-
-use super::{Config, DIRNAME_INBOX};
+use super::{Config, RepositoryFile};
 
 #[derive(Default)]
 struct ProcessStat {
     /// (tag, filename)
-    processed: Mutex<Vec<(String, String)>>,
+    processed: Mutex<Vec<(String, RepositoryFile)>>,
     error: AtomicU32,
 }
 
@@ -85,7 +83,10 @@ fn str_to_md5(s: &str) -> Result<[u8; super::MD5LEN]> {
     Ok(hash)
 }
 
-async fn process_file(file_path: &Path, repo_path: &Path) -> Result<Option<(String, String)>> {
+async fn process_file(
+    file_path: &Path,
+    repo_path: &Path,
+) -> Result<Option<(String, RepositoryFile)>> {
     const BUFSIZE: usize = 64 * 1024;
 
     // only UTF-8 path is valid
@@ -148,13 +149,21 @@ async fn process_file(file_path: &Path, repo_path: &Path) -> Result<Option<(Stri
 
     tokio::fs::remove_file(&file_path).await?;
     println!("Delete OK: {}", file_path.to_string_lossy());
+    tokio::fs::remove_file(&md5path).await?;
+    println!("Delete OK: {}", md5path.to_string_lossy());
 
-    Ok(Some((tag.to_string(), dest_file_name)))
+    Ok(Some((
+        tag.to_string(),
+        RepositoryFile {
+            name: dest_file_name,
+            md5: md5str,
+        },
+    )))
 }
 
 fn process_inbox(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
-    let inbox_path = dirpath.join(DIRNAME_INBOX);
-    let repo_path = dirpath.join(DIRNAME_REPO);
+    let inbox_path = dirpath.join(super::DIRNAME_INBOX);
+    let repo_path = dirpath.join(super::DIRNAME_REPO);
 
     let stat: Arc<ProcessStat> = Arc::new(Default::default());
     let rt = Runtime::new()?;
@@ -166,17 +175,17 @@ fn process_inbox(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
     println!("Error    : {}", stat.error.load(Ordering::Relaxed));
 
     // update toml
-    for (tag, filename) in processed.iter() {
+    for (tag, rf) in processed.iter() {
         match config.repository.entries.get_mut(tag) {
             Some(set) => {
                 // insert to the set
-                set.insert(filename.clone());
+                set.insert(rf.clone());
             }
             None => {
                 // create a new set and insert to it
                 // insert to the map
                 let mut set = BTreeSet::new();
-                set.insert(filename.clone());
+                set.insert(rf.clone());
                 config.repository.entries.insert(tag.clone(), set);
             }
         }
@@ -186,17 +195,18 @@ fn process_inbox(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
 }
 
 pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
+    const DESC: &str = "Create test file(s).";
     const USAGE_HINT: &str = "--help or -h to show usage";
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
 
     let mut opts = Options::new();
     opts.optflag("h", "help", "Print this help");
 
-    let matches = opts.parse(args).context(USAGE_HINT)?;
-    if matches.opt_present("h") {
-        super::print_help(cmd, &opts);
+    if crate::util::find_option(&args, &["-h", "--help"]) {
+        println!("{}", crate::util::create_help(cmd, DESC, &opts));
         return Ok(());
     }
+    let _matches = opts.parse(args).context(USAGE_HINT)?;
 
     super::process_with_config_lock(basedir, process_inbox)?;
 

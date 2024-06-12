@@ -52,6 +52,7 @@ fn init_dir(dirpath: impl AsRef<Path>, force: bool) -> Result<()> {
 }
 
 pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
+    const DESC: &str = "Initialize backup directory.";
     const USAGE_HINT: &str = "--help or -h to show usage";
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
 
@@ -59,11 +60,11 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     opts.optflag("h", "help", "Print this help");
     opts.optflag("f", "force", "Ignore errors");
 
-    let matches = opts.parse(args).context(USAGE_HINT)?;
-    if matches.opt_present("h") {
-        super::print_help(cmd, &opts);
+    if crate::util::find_option(&args, &["-h", "--help"]) {
+        println!("{}", crate::util::create_help(cmd, DESC, &opts));
         return Ok(());
     }
+    let matches = opts.parse(args).context(USAGE_HINT)?;
     let force = matches.opt_present("f");
 
     super::with_force(force, || check_empty_dir(basedir))?;

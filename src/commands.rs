@@ -1,16 +1,41 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
+use std::sync::OnceLock;
 use std::{fs::OpenOptions, path::Path};
 
 use anyhow::{anyhow, ensure, Result};
 use chrono::Local;
 use fs2::FileExt;
-use getopts::Options;
 use regex::{Match, Regex};
 use serde::{Deserialize, Serialize};
 
 pub mod inbox;
 pub mod init;
+pub mod test_file;
+
+type CommandFunc = Box<dyn Fn(&Path, &str, &[String]) -> Result<()> + Send + Sync + 'static>;
+type CommandMap = BTreeMap<&'static str, CommandFunc>;
+
+#[cfg(debug_assertions)]
+fn add_debug_commands(table: &mut CommandMap) {
+    table.insert("test-file", Box::new(test_file::entry));
+}
+
+#[cfg(not(debug_assertions))]
+fn add_debug_commands(_table: &mut CommandMap) {}
+
+pub fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
+    static TABLE: OnceLock<CommandMap> = OnceLock::new();
+
+    TABLE.get_or_init(|| {
+        let mut table: CommandMap = BTreeMap::new();
+        table.insert("init", Box::new(init::entry));
+        table.insert("inbox", Box::new(inbox::entry));
+        add_debug_commands(&mut table);
+
+        table
+    })
+}
 
 const CONFIG_FILE_NAME: &str = "config.toml";
 const DIRNAME_INBOX: &str = "inbox";
@@ -40,7 +65,13 @@ struct System {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Repository {
-    entries: BTreeMap<String, BTreeSet<String>>,
+    entries: BTreeMap<String, BTreeSet<RepositoryFile>>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct RepositoryFile {
+    name: String,
+    md5: String,
 }
 
 impl Default for System {
@@ -56,11 +87,6 @@ impl System {
     fn update(&mut self) {
         self.updated = Local::now().to_string();
     }
-}
-
-fn print_help(program: &str, opts: &Options) {
-    let brief = format!("Usage: {program} [options]");
-    print!("{}", opts.usage(&brief));
 }
 
 /// Do process with locking config file.
