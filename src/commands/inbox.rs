@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, ensure, Context, Result};
 use getopts::Options;
 use md5::{Digest, Md5};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::runtime::Runtime;
 
 use super::{Config, RepositoryFile};
@@ -20,7 +20,7 @@ struct ProcessStat {
 }
 
 async fn process_dir(stat: Arc<ProcessStat>, inbox_path: &Path, repo_path: &Path) {
-    println!("Process {}", inbox_path.to_string_lossy());
+    println!("Process {}", inbox_path.display());
 
     // get directory iterator (sync)
     let iter = match inbox_path.read_dir() {
@@ -51,7 +51,7 @@ async fn process_dir(stat: Arc<ProcessStat>, inbox_path: &Path, repo_path: &Path
             let h = tokio::spawn(async move { process_file(&path, &repo_path).await });
             handles.push(h);
         } else {
-            println!("Not a regular file {}", path.to_string_lossy());
+            println!("Not a regular file {}", path.display());
             stat.error.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -81,7 +81,7 @@ async fn process_file(
     // only UTF-8 path is valid
     file_path
         .to_str()
-        .ok_or_else(|| anyhow!("Invalid path: {}", file_path.to_string_lossy()))?;
+        .ok_or_else(|| anyhow!("Invalid path: {}", file_path.display()))?;
 
     // skip "*.md5sum"
     if let Some(rawext) = file_path.extension() {
@@ -91,7 +91,7 @@ async fn process_file(
         }
     }
 
-    println!("File: {}", file_path.to_string_lossy());
+    println!("File: {}", file_path.display());
 
     let filename = file_path.file_name().unwrap().to_str().unwrap();
     let (tag, date, ext) = super::split_filename(filename)?;
@@ -101,10 +101,10 @@ async fn process_file(
     // read md5 from text
     let mut md5str = tokio::fs::read_to_string(&md5path)
         .await
-        .with_context(|| format!("Cannot read {}", md5path.to_string_lossy()))?;
+        .with_context(|| format!("Cannot read {}", md5path.display()))?;
     md5str.truncate(util::MD5STRLEN);
     let md5 = util::str_to_md5(&md5str)
-        .with_context(|| format!("Failed to convert to MD5 {}", md5path.to_string_lossy()))?;
+        .with_context(|| format!("Failed to convert to MD5 {}", md5path.display()))?;
 
     // read the file and calc md5
     let mut fin = tokio::fs::File::open(&file_path).await?;
@@ -121,31 +121,40 @@ async fn process_file(
 
     // verify md5
     ensure!(*result == md5, "MD5 unmatch");
-    println!("MD5 verify OK: {}", file_path.to_string_lossy());
+    println!("MD5 verify OK: {}", file_path.display());
 
     // copy
     let destdir = repo_path.join(tag);
     tokio::fs::create_dir_all(&destdir).await?;
     let dest_file_name = format!("{tag}_{date}.{ext}");
-    let destfile = destdir.join(&dest_file_name);
-    let size = tokio::fs::copy(&file_path, &destfile).await?;
-    println!(
-        "Copy OK: {} => {} ({} B)",
-        file_path.to_string_lossy(),
-        destfile.to_string_lossy(),
-        size
-    );
+    {
+        let destfile = destdir.join(&dest_file_name);
+        let size = tokio::fs::copy(&file_path, &destfile).await?;
+        println!(
+            "Copy OK: {} => {} ({})",
+            file_path.display(),
+            destfile.display(),
+            util::size_to_human_readable(size)
+        );
+    }
+    let dest_md5file_name = format!("{dest_file_name}.{}", super::MD5EXT);
+    {
+        let destfile = destdir.join(&dest_md5file_name);
+        let mut file = tokio::fs::File::create(&destfile).await?;
+        file.write_all(md5str.as_bytes()).await?;
+        println!("Write OK: {}", destfile.display());
+    }
 
     tokio::fs::remove_file(&file_path).await?;
-    println!("Delete OK: {}", file_path.to_string_lossy());
+    println!("Delete OK: {}", file_path.display());
     tokio::fs::remove_file(&md5path).await?;
-    println!("Delete OK: {}", md5path.to_string_lossy());
+    println!("Delete OK: {}", md5path.display());
 
     Ok(Some((
         tag.to_string(),
         RepositoryFile {
             name: dest_file_name,
-            md5: md5str,
+            md5name: dest_md5file_name,
         },
     )))
 }

@@ -1,8 +1,0 @@
-This is empty directory for quick test.
-
-e.g.
-
-$ cargo run -- init
-
-On the project root:
-$ cargo run -- -C workspace init

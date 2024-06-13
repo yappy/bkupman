@@ -61,7 +61,7 @@ struct Repository {
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 struct RepositoryFile {
     name: String,
-    md5: String,
+    md5name: String,
 }
 
 impl Default for System {

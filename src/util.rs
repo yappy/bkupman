@@ -45,6 +45,35 @@ pub fn parse_size(s: &str) -> Result<u64> {
     num.checked_mul(unit).ok_or_else(|| anyhow!("overflow"))
 }
 
+pub fn size_to_human_readable(size: u64) -> String {
+    if size < 1024 {
+        return format!("{size} B");
+    }
+
+    let mut unit = 1024.0;
+    let fsize = size as f64;
+    let num = fsize / unit;
+    if num < 1024.0 {
+        return format!("{num:.1} KiB");
+    }
+
+    unit *= 1024.0;
+    let num = fsize / unit;
+    if num < 1024.0 {
+        return format!("{num:.1} MiB");
+    }
+
+    unit *= 1024.0;
+    let num = fsize / unit;
+    if num < 1024.0 {
+        return format!("{num:.1} GiB");
+    }
+
+    unit *= 1024.0;
+    let num = fsize / unit;
+    format!("{num:.1} TiB")
+}
+
 // 128 bit
 pub const MD5LEN: usize = 16;
 pub const MD5STRLEN: usize = 32;
@@ -134,6 +163,18 @@ mod tests {
         assert!(parse_size(&(usize::MAX.to_string() + "k")).is_err());
 
         Ok(())
+    }
+
+    #[test]
+    fn test_size_to_human_readable() {
+        for size in 0..1024 {
+            let s = size_to_human_readable(size);
+            assert_eq!(s, format!("{size} B"));
+        }
+        assert_eq!(size_to_human_readable(1024), "1.0 KiB");
+        assert_eq!(size_to_human_readable(1024 * 1024), "1.0 MiB");
+        assert_eq!(size_to_human_readable(1024 * 1024 * 1024), "1.0 GiB");
+        assert_eq!(size_to_human_readable(1024 * 1024 * 1024 * 1024), "1.0 TiB");
     }
 
     #[test]
