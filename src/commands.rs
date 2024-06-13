@@ -9,6 +9,7 @@ use fs2::FileExt;
 use regex::{Match, Regex};
 use serde::{Deserialize, Serialize};
 
+pub mod crypt;
 pub mod inbox;
 pub mod init;
 pub mod test_file;
@@ -23,6 +24,7 @@ pub fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
         let mut table: CommandMap = BTreeMap::new();
         table.insert("init", Box::new(init::entry));
         table.insert("inbox", Box::new(inbox::entry));
+        table.insert("crypt", Box::new(crypt::entry));
 
         table.insert("test-file", Box::new(test_file::entry));
 
