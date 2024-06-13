@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
 use std::sync::OnceLock;
@@ -57,7 +58,7 @@ struct System {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Repository {
-    entries: BTreeMap<String, BTreeSet<RepositoryFile>>,
+    entries: BTreeMap<String, BTreeSet<Reverse<RepositoryFile>>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

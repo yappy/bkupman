@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -177,13 +178,13 @@ fn process_inbox(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
         match config.repository.entries.get_mut(tag) {
             Some(set) => {
                 // insert to the set
-                set.insert(rf.clone());
+                set.insert(Reverse(rf.clone()));
             }
             None => {
                 // create a new set and insert to it
                 // insert to the map
                 let mut set = BTreeSet::new();
-                set.insert(rf.clone());
+                set.insert(Reverse(rf.clone()));
                 config.repository.entries.insert(tag.clone(), set);
             }
         }
