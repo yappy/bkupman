@@ -132,7 +132,7 @@ fn split_filename(name: &str) -> Result<(&str, &str, &str)> {
 
     // *YYYYDDMM[hhmmss].*
     // (not-dot)+ (num){8,14} "." (any)*
-    let re = Regex::new(r"^([^.]+)([0-9]{8,14})\.(.*)$").unwrap();
+    let re = Regex::new(r"^([^.]*[^.0-9])([0-9]+)\.(.*)$").unwrap();
     let caps = re
         .captures(name)
         .ok_or_else(|| anyhow!("Invalid file name: {name}"))?;
@@ -153,6 +153,11 @@ mod tests {
         assert_eq!(a, "hello-world");
         assert_eq!(b, "20240101");
         assert_eq!(c, "tar.bz2");
+
+        let (a, b, c) = split_filename("testfile-00000_20240613165945.bin")?;
+        assert_eq!(a, "testfile-00000");
+        assert_eq!(b, "20240613165945");
+        assert_eq!(c, "bin");
 
         let r = split_filename(".gitignore");
         assert!(r.is_err());
