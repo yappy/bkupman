@@ -2,7 +2,7 @@
 
 ## バックアップサーバ側
 
-[Design Note](design.md)
+[Design Note](design/design.md)
 
 ## クライアント側 - Windows
 
