@@ -1,15 +1,13 @@
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, ensure, Context, Result};
 use getopts::Options;
-use md5::{Digest, Md5};
+use strum::{EnumMessage, IntoEnumIterator, VariantNames};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::runtime::Runtime;
 
 use super::{Config, RepositoryFile};
+use crate::commands::CryptType;
 use crate::util;
 
 /*
@@ -40,15 +38,32 @@ fn process_crypt(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
 }
 
 pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
-    const DESC: &str = "Encrypt the latest files in the repository.";
+    const DESC: &str = "Split and encrypt the latest files in the repository.";
     const USAGE_HINT: &str = "--help or -h to show usage";
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
 
+    let types = CryptType::iter()
+        .map(|t| t.get_serializations()[0])
+        .collect::<Vec<_>>()
+        .join(", ");
+    let type_descs = CryptType::iter()
+        .map(|t| {
+            format!(
+                "    {:<5}: {}",
+                t.get_serializations()[0],
+                t.get_message().unwrap()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
     let mut opts = Options::new();
     opts.optflag("h", "help", "Print this help");
+    opts.optflag("t", "type", &format!("Encryption type ({types})"));
 
     if crate::util::find_option(&args, &["-h", "--help"]) {
         println!("{}", crate::util::create_help(cmd, DESC, &opts));
+        println!("Encryption Types:\n{type_descs}");
         return Ok(());
     }
     let _matches = opts.parse(args).context(USAGE_HINT)?;

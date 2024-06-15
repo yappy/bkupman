@@ -156,6 +156,7 @@ async fn process_file(
         RepositoryFile {
             name: dest_file_name,
             md5name: dest_md5file_name,
+            crypt: None,
         },
     )))
 }

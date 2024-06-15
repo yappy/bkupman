@@ -9,11 +9,19 @@ use chrono::Local;
 use fs2::FileExt;
 use regex::{Match, Regex};
 use serde::{Deserialize, Serialize};
+use strum::{EnumIter, EnumMessage, EnumString};
 
 pub mod crypt;
 pub mod inbox;
 pub mod init;
 pub mod test_file;
+
+const CONFIG_FILE_NAME: &str = "config.toml";
+const DIRNAME_INBOX: &str = "inbox";
+const DIRNAME_REPO: &str = "repo";
+const DIRNAME_CRYPT: &str = "crypt";
+
+const MD5EXT: &str = "md5sum";
 
 type CommandFunc = Box<dyn Fn(&Path, &str, &[String]) -> Result<()> + Send + Sync + 'static>;
 type CommandMap = BTreeMap<&'static str, CommandFunc>;
@@ -33,13 +41,6 @@ pub fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
     })
 }
 
-const CONFIG_FILE_NAME: &str = "config.toml";
-const DIRNAME_INBOX: &str = "inbox";
-const DIRNAME_REPO: &str = "repo";
-const DIRNAME_CRYPT: &str = "crypt";
-
-const MD5EXT: &str = "md5sum";
-
 const CONFIG_VERSION: u32 = 1;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -58,6 +59,7 @@ struct System {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Repository {
+    /// key = dirname, value = [RepositoryFile]
     entries: BTreeMap<String, BTreeSet<Reverse<RepositoryFile>>>,
 }
 
@@ -65,6 +67,37 @@ struct Repository {
 struct RepositoryFile {
     name: String,
     md5name: String,
+    crypt: Option<CryptInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct CryptInfo {
+    ctype: CryptType,
+    fragment_count: u32,
+}
+
+#[derive(
+    EnumString,
+    EnumMessage,
+    EnumIter,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+)]
+enum CryptType {
+    #[strum(serialize = "plain", message = "plaintext (no encryption)")]
+    PlainText,
+    #[strum(
+        serialize = "aes",
+        message = "AES128-GCM (Advanced Encryption Standard, key=128bit, Galois/Counter Mode)"
+    )]
+    Aes128Gcm,
 }
 
 impl Default for System {

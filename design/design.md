@@ -13,15 +13,19 @@
   * repo.toml
     * ルート情報ファイル (兼ロック？)
   * inbox/
-    * `prefix-date.tar.xz`
-    * `prefix-date.tar.xz.md5sum`
+    * `prefix_date.tar.xz`
+    * `prefix_date.tar.xz.md5sum`
   * repo/
     * `prefix`/
-      * `prefix-date.tar.xz` etc.
+      * `prefix_date.tar.xz` etc.
       * ...
     * `prefix2`/
       * ...
   * crypt/
+    * `prefix_date`/
+      * `prefix_date.tar.xz.00000`
+      * `prefix_date.tar.xz.00001`
+      * ...
 
 ## 暗号関連
 
