@@ -6,7 +6,7 @@ use strum::{EnumMessage, IntoEnumIterator, VariantNames};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::runtime::Runtime;
 
-use super::{Config, RepositoryFile};
+use super::{inbox, Config, RepositoryFile};
 use crate::commands::CryptType;
 use crate::util;
 
@@ -27,9 +27,29 @@ async fn process_flagment(file_path: &Path, repo_path: &Path) -> Result<()> {
 
 fn process_crypt(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
     let repo_path = dirpath.join(super::DIRNAME_REPO);
+    let crypt_path = dirpath.join(super::DIRNAME_CRYPT);
+    // filter to pick up (latest && crypt entry is empty)
+    let latest_tags_wo_crypt: Vec<String> = config
+        .repository
+        .entries
+        .iter()
+        .filter_map(|(k, v)| {
+            let latest = v.first();
+            if let Some(rf) = latest {
+                if rf.0.crypt.is_none() {
+                    Some(k.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+    dbg!(latest_tags_wo_crypt);
 
     let rt = Runtime::new()?;
-    // rt.block_on();
+    rt.block_on(async {});
     drop(rt);
 
     // update toml
@@ -59,7 +79,7 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
 
     let mut opts = Options::new();
     opts.optflag("h", "help", "Print this help");
-    opts.optflag("t", "type", &format!("Encryption type ({types})"));
+    opts.reqopt("t", "type", &format!("Encryption type ({types})"), "<TYPE>");
 
     if crate::util::find_option(&args, &["-h", "--help"]) {
         println!("{}", crate::util::create_help(cmd, DESC, &opts));
