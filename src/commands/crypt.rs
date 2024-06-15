@@ -1,4 +1,6 @@
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::{anyhow, ensure, Context, Result};
 use getopts::Options;
@@ -19,15 +21,41 @@ struct ProcessStat {
 }
      */
 
-async fn process_file(inbox_path: &Path, repo_path: &Path) {}
-
-async fn process_flagment(file_path: &Path, repo_path: &Path) -> Result<()> {
-    unimplemented!()
+struct TaskParam {
+    ctype: CryptType,
+    repo_path: PathBuf,
+    crypt_path: PathBuf,
 }
 
-fn process_crypt(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
+async fn process_tag(param: Arc<TaskParam>, tag: String) {
+    println!("Process: {tag}");
+}
+
+async fn process_tags(param: Arc<TaskParam>, tags: &[impl ToString]) {
+    let handles: Vec<_> = tags
+        .iter()
+        .map(|tag| {
+            let param = Arc::clone(&param);
+            let tag = tag.to_string();
+            tokio::spawn( process_tag(param, tag) )
+        })
+        .collect();
+
+    for h in handles {
+        let result = h.await;
+    }
+}
+
+fn process_crypt(dirpath: &Path, mut config: Config, ctype: CryptType) -> Result<Option<Config>> {
     let repo_path = dirpath.join(super::DIRNAME_REPO);
     let crypt_path = dirpath.join(super::DIRNAME_CRYPT);
+
+    let param = Arc::new(TaskParam {
+        ctype,
+        repo_path,
+        crypt_path,
+    });
+
     // filter to pick up (latest && crypt entry is empty)
     let latest_tags_wo_crypt: Vec<String> = config
         .repository
@@ -46,10 +74,9 @@ fn process_crypt(dirpath: &Path, mut config: Config) -> Result<Option<Config>> {
             }
         })
         .collect();
-    dbg!(latest_tags_wo_crypt);
 
     let rt = Runtime::new()?;
-    rt.block_on(async {});
+    rt.block_on(process_tags(param, &latest_tags_wo_crypt));
     drop(rt);
 
     // update toml
@@ -86,9 +113,14 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
         println!("Encryption Types:\n{type_descs}");
         return Ok(());
     }
-    let _matches = opts.parse(args).context(USAGE_HINT)?;
+    let matches = opts.parse(args).context(USAGE_HINT)?;
 
-    super::process_with_config_lock(basedir, process_crypt)?;
+    let typestr = matches.opt_str("t").unwrap();
+    let ctype = CryptType::from_str(&typestr).context("invalid crypt type")?;
+
+    super::process_with_config_lock(basedir,  |basedir, config|{
+        process_crypt(basedir, config, ctype)
+})?;
 
     Ok(())
 }
