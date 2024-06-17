@@ -1,5 +1,8 @@
+use std::io::SeekFrom;
+
 use anyhow::{anyhow, ensure, Result};
 use getopts::Options;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 /// The library getopts workaround.
 ///
@@ -125,6 +128,20 @@ pub fn xorshift64_fill(v: &mut [u8], state: u64) -> u64 {
     }
 
     x
+}
+
+pub async fn read_fully(file: &mut tokio::fs::File, buf: &mut [u8]) -> Result<usize> {
+    let mut cur = 0usize;
+    while cur < buf.len() {
+        let rsize = file.read(&mut buf[cur..]).await?;
+        if rsize == 0 {
+            // EOF
+            break;
+        }
+        cur += rsize;
+    }
+
+    Ok(cur)
 }
 
 #[cfg(test)]

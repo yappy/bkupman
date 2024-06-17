@@ -58,7 +58,7 @@ async fn process_dir(stat: Arc<ProcessStat>, inbox_path: &Path, repo_path: &Path
     }
     for h in handles {
         // JoinError happens only if cancel or panic
-        match h.await.expect("unexpected JoinError") {
+        match h.await.unwrap() {
             Ok(result) => {
                 let mut p = stat.processed.lock().unwrap();
                 if let Some(tuple) = result {

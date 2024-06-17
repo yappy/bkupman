@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
+use std::num::NonZeroU64;
 use std::sync::OnceLock;
 use std::{fs::OpenOptions, path::Path};
 
@@ -73,7 +74,8 @@ struct RepositoryFile {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 struct CryptInfo {
     ctype: CryptType,
-    fragment_count: u32,
+    total_size: u64,
+    fragment_size: NonZeroU64,
 }
 
 #[derive(
@@ -95,7 +97,7 @@ enum CryptType {
     PlainText,
     #[strum(
         serialize = "aes",
-        message = "AES128-GCM (Advanced Encryption Standard, key=128bit, Galois/Counter Mode)"
+        message = "AES256-GCM (Advanced Encryption Standard, key=256bit, Galois/Counter Mode)"
     )]
     Aes128Gcm,
 }
