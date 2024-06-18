@@ -77,11 +77,18 @@ async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile
         let crypted = cipher.encrypt(&nonce, buf).map_err(|err| anyhow!(err))?;
 
         // decrypt test
-        let decrypted = cipher.decrypt(&nonce, &*crypted).map_err(|err| anyhow!(err))?;
+        let decrypted = cipher
+            .decrypt(&nonce, &*crypted)
+            .map_err(|err| anyhow!(err))?;
         assert_eq!(buf, decrypted);
         println!("Decrypt test OK");
 
-        println!("plain: {}, nonce: {}, crypted: {}", buf.len(), nonce.len(), crypted.len());
+        println!(
+            "plain: {}, nonce: {}, crypted: {}",
+            buf.len(),
+            nonce.len(),
+            crypted.len()
+        );
         println!("To: {}", dst_path.display());
 
         let mut fout = tokio::fs::File::create(&dst_path).await?;
