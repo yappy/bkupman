@@ -9,7 +9,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use getopts::Options;
 use rand::rngs::OsRng;
 use strum::{EnumMessage, IntoEnumIterator};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 
 use super::{Config, RepositoryFile};
@@ -32,13 +32,24 @@ struct TaskParam {
     crypt_path: PathBuf,
 }
 
-async fn process_file_plain(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) -> Result<()> {
+async fn process_file_plain(
+    _param: Arc<TaskParam>,
+    _tag: String,
+    _rf: RepositoryFile,
+) -> Result<()> {
     Ok(())
 }
 
 async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) -> Result<()> {
-    let src_path = param.repo_path.join(&tag).join(rf.name);
-    println!("Process: {tag}, Source: {}", src_path.display());
+    let src_path = param.repo_path.join(&tag).join(&rf.name);
+    let dst_dir_path = param.crypt_path.join(&tag);
+    println!(
+        "Process: {tag}, Src {}, Dst {}",
+        src_path.display(),
+        dst_dir_path.display()
+    );
+
+    tokio::fs::create_dir_all(&dst_dir_path).await?;
 
     // source file
     let mut fin = tokio::fs::File::open(src_path).await?;
@@ -49,7 +60,10 @@ async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile
 
     let bufsize = param.fragment_size.get() as usize;
     let mut buf = vec![0u8; bufsize];
+    let mut idx = 0u64;
     loop {
+        let dst_path = dst_dir_path.join(&format!("{}.{:0>6}", rf.name, idx));
+
         let rsize = util::read_fully(&mut fin, &mut buf).await?;
         if rsize == 0 {
             break;
@@ -62,7 +76,19 @@ async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile
         // aes_gcm::Error does not implement std::error::Error
         let crypted = cipher.encrypt(&nonce, buf).map_err(|err| anyhow!(err))?;
 
-        println!("plain: {}, crypted: {}", buf.len(), crypted.len());
+        // decrypt test
+        let decrypted = cipher.decrypt(&nonce, &*crypted).map_err(|err| anyhow!(err))?;
+        assert_eq!(buf, decrypted);
+        println!("Decrypt test OK");
+
+        println!("plain: {}, nonce: {}, crypted: {}", buf.len(), nonce.len(), crypted.len());
+        println!("To: {}", dst_path.display());
+
+        let mut fout = tokio::fs::File::create(&dst_path).await?;
+        fout.write_all(&nonce).await?;
+        fout.write_all(&crypted).await?;
+
+        idx += 1;
     }
 
     Ok(())

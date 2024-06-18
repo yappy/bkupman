@@ -74,6 +74,7 @@ struct RepositoryFile {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 struct CryptInfo {
     ctype: CryptType,
+    /// fragment count = [Self::total_size] + [Self::fragment_size]
     total_size: u64,
     fragment_size: NonZeroU64,
 }

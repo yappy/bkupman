@@ -1,8 +1,6 @@
-use std::io::SeekFrom;
-
 use anyhow::{anyhow, ensure, Result};
 use getopts::Options;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::io::AsyncReadExt;
 
 /// The library getopts workaround.
 ///
