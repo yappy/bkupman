@@ -5,6 +5,24 @@ use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Result};
 use getopts::Options;
+use log::{info, LevelFilter};
+use simplelog::{
+    ColorChoice, CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode,
+};
+
+fn create_term_logger() -> Box<dyn SharedLogger> {
+    let config = ConfigBuilder::new()
+        .set_time_offset_to_local()
+        .unwrap()
+        .set_time_format_rfc2822()
+        .build();
+    TermLogger::new(
+        LevelFilter::Trace,
+        config,
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )
+}
 
 fn print_help_subcommands(program: &str, opts: &Options) {
     let brief = format!("Usage: {program} [options]");
@@ -51,6 +69,13 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
         print_help_subcommands(program, &opts);
         return Ok(());
     }
+
+    let mut loggers = vec![];
+    loggers.push(create_term_logger());
+    // fails only if logger is already set
+    CombinedLogger::init(loggers).unwrap();
+    info!("Log OK!");
+
     let basedir = if let Some(dir) = matches.opt_str("C") {
         println!("Set base directory: {dir}");
         println!();
