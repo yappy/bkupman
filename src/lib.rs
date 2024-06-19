@@ -1,31 +1,59 @@
 mod commands;
 mod util;
 
-use std::path::Path;
+use std::{fs::File, path::Path};
 
 use anyhow::{anyhow, bail, Context, Result};
 use getopts::Options;
-use log::{info, LevelFilter};
+use log::{error, info, LevelFilter};
 use simplelog::{
-    ColorChoice, CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode,
+    ColorChoice, CombinedLogger, Config, ConfigBuilder, SharedLogger, SimpleLogger, TermLogger,
+    TerminalMode, WriteLogger,
 };
 
-fn create_term_logger() -> Box<dyn SharedLogger> {
-    let config = ConfigBuilder::new()
+fn initialize_logger(test_mode: bool, log_files: Vec<String>) -> Result<()> {
+    if test_mode {
+        let _ = SimpleLogger::init(LevelFilter::Trace, Default::default());
+        // ignore error (set once)
+        return Ok(());
+    }
+
+    let config = create_log_config();
+
+    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![];
+    // terminal
+    loggers.push(TermLogger::new(
+        LevelFilter::Trace,
+        config.clone(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    ));
+    // file
+    for file in log_files.iter() {
+        loggers.push(WriteLogger::new(
+            LevelFilter::Info,
+            config.clone(),
+            File::create(file).with_context(|| format!("Failed to open log file: {file}"))?,
+        ));
+    }
+
+    // fails only if logger is already set
+    CombinedLogger::init(loggers).unwrap();
+    info!("Log setup");
+
+    Ok(())
+}
+
+fn create_log_config() -> Config {
+    ConfigBuilder::new()
         .set_time_offset_to_local()
         .unwrap()
         .set_time_format_rfc2822()
-        .build();
-    TermLogger::new(
-        LevelFilter::Trace,
-        config,
-        TerminalMode::Mixed,
-        ColorChoice::Auto,
-    )
+        .build()
 }
 
 fn print_help_subcommands(program: &str, opts: &Options) {
-    let brief = format!("Usage: {program} [options]");
+    let brief = format!("Usage: {program} [options...] SUBCMD [options...]");
     println!("{}", opts.usage(&brief));
 
     let table = commands::dispatch_table();
@@ -36,6 +64,8 @@ fn print_help_subcommands(program: &str, opts: &Options) {
 }
 
 fn dispatch_subcommand(basedir: impl AsRef<Path>, argv: &[String]) -> Result<()> {
+    assert!(!argv.is_empty());
+
     let table = commands::dispatch_table();
     let argv0: &str = &argv[0];
     let func = table
@@ -58,9 +88,11 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
     opts.optopt(
         "C",
         "directory",
-        "Change working directory at first",
+        "Set root directory for working",
         "DIRECTORY",
     );
+    opts.optflag("t", "test-mode", "Test mode (disable log)");
+    opts.optmulti("l", "log", "Add log file", "LOGFILE");
 
     let matches = opts.parse(args).context(USAGE_HINT)?;
 
@@ -69,26 +101,37 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
         print_help_subcommands(program, &opts);
         return Ok(());
     }
+    if matches.free.is_empty() {
+        print_help_subcommands(program, &opts);
+        bail!("Subcommand not specified");
+    }
+    let test_mode = matches.opt_present("t");
 
-    let mut loggers = vec![];
-    loggers.push(create_term_logger());
-    // fails only if logger is already set
-    CombinedLogger::init(loggers).unwrap();
-    info!("Log OK!");
+    let log_files = matches.opt_strs("l");
+    initialize_logger(test_mode, log_files)?;
 
-    let basedir = if let Some(dir) = matches.opt_str("C") {
-        println!("Set base directory: {dir}");
-        println!();
+    let work_main = || {
+        let basedir = if let Some(dir) = matches.opt_str("C") {
+            info!("Set base directory: {dir}");
 
-        dir
-    } else {
-        ".".to_string()
+            dir
+        } else {
+            ".".to_string()
+        };
+
+        dispatch_subcommand(basedir, &matches.free)
     };
 
-    if !matches.free.is_empty() {
-        dispatch_subcommand(basedir, &matches.free)
-    } else {
-        print_help_subcommands(program, &opts);
-        bail!("Subcommand not specified")
+    match work_main() {
+        Ok(()) => {
+            info!("Completed successfully");
+            Ok(())
+        }
+        Err(err) => {
+            // don't return from main()
+            error!("Command failed");
+            error!("{:#}", err);
+            std::process::exit(1);
+        }
     }
 }

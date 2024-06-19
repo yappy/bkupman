@@ -25,4 +25,5 @@ tokio = { version = "1.38.0", features = ["fs", "macros", "rt-multi-thread", "ti
 toml = "0.8.14"
 
 [dev-dependencies]
+serial_test = "3.1.1"
 tempdir = "0.3.7"

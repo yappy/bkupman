@@ -8,6 +8,7 @@ use std::{fs::OpenOptions, path::Path};
 use anyhow::{anyhow, ensure, Result};
 use chrono::Local;
 use fs2::FileExt;
+use log::warn;
 use regex::{Match, Regex};
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, EnumMessage, EnumString};
@@ -152,7 +153,7 @@ fn with_force(force: bool, proc: impl FnOnce() -> Result<()>) -> Result<()> {
     let res = proc();
     if force {
         if let Err(err) = res {
-            println!("{:#}", err);
+            warn!("{:#}", err);
         }
         Ok(())
     } else {
