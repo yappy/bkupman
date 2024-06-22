@@ -208,7 +208,5 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     }
     let _matches = opts.parse(args).context(USAGE_HINT)?;
 
-    super::process_with_config_lock(basedir, process_inbox)?;
-
-    Ok(())
+    super::process_with_config_lock(basedir, process_inbox)
 }

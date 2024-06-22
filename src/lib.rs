@@ -1,4 +1,5 @@
 mod commands;
+mod cryptutil;
 mod util;
 
 use std::{fs::File, path::Path};

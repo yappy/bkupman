@@ -16,6 +16,7 @@ use strum::{EnumIter, EnumMessage, EnumString};
 pub mod crypt;
 pub mod inbox;
 pub mod init;
+pub mod key;
 pub mod test_file;
 
 const CONFIG_FILE_NAME: &str = "config.toml";
@@ -34,6 +35,7 @@ pub fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
     TABLE.get_or_init(|| {
         let mut table: CommandMap = BTreeMap::new();
         table.insert("init", Box::new(init::entry));
+        table.insert("genkey", Box::new(key::entry));
         table.insert("inbox", Box::new(inbox::entry));
         table.insert("crypt", Box::new(crypt::entry));
 
@@ -50,6 +52,8 @@ struct Config {
     #[serde(default)]
     system: System,
     #[serde(default)]
+    crypt_key: CryptKey,
+    #[serde(default)]
     repository: Repository,
 }
 
@@ -57,6 +61,13 @@ struct Config {
 struct System {
     version: u32,
     updated: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct CryptKey {
+    /// bcrypt-ed password (prefix, cost, salt+hash).
+    /// salt = 16 B + hash = 23 B
+    bcrypt: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

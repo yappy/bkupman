@@ -3,18 +3,17 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
-use aes_gcm::aead::Aead;
-use aes_gcm::{AeadCore, Aes256Gcm, KeyInit};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use getopts::Options;
-use rand::rngs::OsRng;
+use log::{debug, info};
 use strum::{EnumMessage, IntoEnumIterator};
 use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 
 use super::{Config, RepositoryFile};
 use crate::commands::CryptType;
-use crate::util;
+use crate::cryptutil::Tag;
+use crate::{cryptutil, util};
 
 /*
 #[derive(Default)]
@@ -22,8 +21,7 @@ struct ProcessStat {
     /// (tag, filename)
     processed: Mutex<Vec<(String, RepositoryFile)>>,
     error: AtomicU32,
-}
-     */
+}*/
 
 struct TaskParam {
     ctype: CryptType,
@@ -43,7 +41,7 @@ async fn process_file_plain(
 async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) -> Result<()> {
     let src_path = param.repo_path.join(&tag).join(&rf.name);
     let dst_dir_path = param.crypt_path.join(&tag);
-    println!(
+    info!(
         "Process: {tag}, Src {}, Dst {}",
         src_path.display(),
         dst_dir_path.display()
@@ -55,45 +53,39 @@ async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile
     let mut fin = tokio::fs::File::open(src_path).await?;
 
     // keylen = 256 bit = 32 byte
-    let key = Aes256Gcm::generate_key(OsRng);
-    let cipher = Aes256Gcm::new(&key);
+    let key = [0u8; 32];
 
     let bufsize = param.fragment_size.get() as usize;
-    let mut buf = vec![0u8; bufsize];
+    let mut rawbuf = vec![0u8; bufsize];
+    let mut encbuf = vec![0u8; bufsize];
     let mut idx = 0u64;
     loop {
         let dst_path = dst_dir_path.join(&format!("{}.{:0>6}", rf.name, idx));
 
-        let rsize = util::read_fully(&mut fin, &mut buf).await?;
+        let rsize = util::read_fully(&mut fin, &mut rawbuf).await?;
         if rsize == 0 {
             break;
         }
 
-        let buf = &buf[..rsize];
+        let rawbuf = &rawbuf[..rsize];
+        let encbuf = &mut encbuf[..rsize];
+        let mut tag: Tag = Default::default();
 
         // 96 bit = 12 byte, must generate new one every time
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-        // aes_gcm::Error does not implement std::error::Error
-        let crypted = cipher.encrypt(&nonce, buf).map_err(|err| anyhow!(err))?;
+        let nonce = cryptutil::generate_nonce();
+        cryptutil::encrypt(&key, &nonce, &[], rawbuf, encbuf, &mut tag);
 
-        // decrypt test
-        let decrypted = cipher
-            .decrypt(&nonce, &*crypted)
-            .map_err(|err| anyhow!(err))?;
-        assert_eq!(buf, decrypted);
-        println!("Decrypt test OK");
-
-        println!(
+        debug!(
             "plain: {}, nonce: {}, crypted: {}",
-            buf.len(),
+            rawbuf.len(),
             nonce.len(),
-            crypted.len()
+            encbuf.len()
         );
-        println!("To: {}", dst_path.display());
+        info!("To: {}", dst_path.display());
 
         let mut fout = tokio::fs::File::create(&dst_path).await?;
         fout.write_all(&nonce).await?;
-        fout.write_all(&crypted).await?;
+        fout.write_all(&encbuf).await?;
 
         idx += 1;
     }
@@ -108,7 +100,7 @@ async fn process_files(param: Arc<TaskParam>, files: &[(String, RepositoryFile)]
             let param = Arc::clone(&param);
             let tag = tuple.0.to_string();
             let rf = tuple.1.clone();
-            // crate a task
+            // create a task
             tokio::spawn(async move {
                 match param.ctype {
                     CryptType::PlainText => process_file_plain(param, tag, rf).await,
