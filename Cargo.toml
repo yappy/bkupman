@@ -9,6 +9,7 @@ panic = "abort"
 panic = "abort"
 
 [dependencies]
+aes-gcm = "0.10.3"
 anyhow = "1.0.86"
 base64 = "0.22.1"
 chrono = "0.4.38"
@@ -17,9 +18,9 @@ fs2 = "0.4.3"
 getopts = "0.2.21"
 log = "0.4.21"
 md-5 = "0.10.6"
+pbkdf2 = "0.12.2"
 rand = "0.8.5"
 regex = "1.10.5"
-rust-crypto = "0.2.36"
 serde = { version = "1.0.203", features = ["derive"] }
 simplelog = "0.12.2"
 strum = { version = "0.26.2", features = ["derive"] }

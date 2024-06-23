@@ -1,23 +1,8 @@
-use crypto::{aead::AeadEncryptor, aes::KeySize, aes_gcm::AesGcm};
+use aes_gcm::{self, aead::Aead, AeadCore, Aes256Gcm, Key, KeyInit};
+use anyhow::{anyhow, Result};
 use rand::{rngs::OsRng, RngCore};
 
-pub const KeySize: usize = 32;
-pub const NonceSize: usize = 12;
-pub const TagSize: usize = 16;
-
-pub type Key = [u8; KeySize];
-pub type Nonce = [u8; NonceSize];
-pub type Tag = [u8; TagSize];
-
-pub fn generate_key() -> Key {
-    generate_random()
-}
-
-pub fn generate_nonce() -> Nonce {
-    generate_random()
-}
-
-fn generate_random<const S: usize>() -> [u8; S] {
+pub fn generate_random<const S: usize>() -> [u8; S] {
     let mut nonce: [u8; S] = [0; S];
     // cryptographically secure
     OsRng.fill_bytes(&mut nonce);
@@ -25,22 +10,37 @@ fn generate_random<const S: usize>() -> [u8; S] {
     nonce
 }
 
+pub fn hash_password() {}
+
+pub const AesKeySize: usize = 32;
+pub const AesNonceSize: usize = 12;
+pub const AesTagSize: usize = 16;
+
+pub type AesKey = [u8; AesKeySize];
+pub type AesNonce = [u8; AesNonceSize];
+
 /// key = 32 (AES 256 bit)
 /// nonce = 12 (96 bit)
-/// aad = any (empty ok)
 /// input = any
 /// output = the same size as input
 /// tag = 16
-pub fn encrypt(
-    key: &[u8],
-    nonce: &[u8],
-    aad: &[u8],
-    input: &[u8],
-    output: &mut [u8],
-    tag: &mut [u8],
-) {
-    let mut aes = AesGcm::new(KeySize::KeySize256, key, nonce, aad);
-    aes.encrypt(input, output, tag)
+pub fn encrypt_aes256gcm(key: &AesKey, input: &[u8]) -> Result<(AesNonce, Vec<u8>)> {
+    let key: &Key<Aes256Gcm> = key.into();
+    let cipher = Aes256Gcm::new(key);
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let crypted = cipher.encrypt(&nonce, input).map_err(|err| anyhow!(err))?;
+
+    Ok((nonce.into(), crypted))
+}
+
+pub fn decrypt_aes256gcm(key: &AesKey, nonce: AesNonce, input: &[u8]) -> Result<Vec<u8>> {
+    let key: &Key<Aes256Gcm> = key.into();
+    let cipher = Aes256Gcm::new(key);
+    let plaintext = cipher
+        .decrypt(&nonce.into(), input)
+        .map_err(|err| anyhow!(err))?;
+
+    Ok(plaintext)
 }
 
 #[cfg(test)]
@@ -48,9 +48,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_nonce() {
-        let n1 = generate_nonce();
-        let n2 = generate_nonce();
-        assert_ne!(n1, n2);
+    fn test_aes256gcm() -> Result<()> {
+        let key: AesKey = generate_random();
+        let plaintext = b"hello";
+
+        let (nonce, ciphertext) = encrypt_aes256gcm(&key, plaintext)?;
+        assert_ne!(plaintext, &ciphertext.as_ref());
+
+        let decrypted = decrypt_aes256gcm(&key, nonce, &ciphertext)?;
+        assert_eq!(&decrypted.as_ref(), plaintext);
+
+        Ok(())
     }
 }

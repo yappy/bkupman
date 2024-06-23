@@ -12,7 +12,6 @@ use tokio::runtime::Runtime;
 
 use super::{Config, RepositoryFile};
 use crate::commands::CryptType;
-use crate::cryptutil::Tag;
 use crate::{cryptutil, util};
 
 /*
@@ -53,11 +52,11 @@ async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile
     let mut fin = tokio::fs::File::open(src_path).await?;
 
     // keylen = 256 bit = 32 byte
-    let key = [0u8; 32];
+    // TODO: change to true key
+    let key = cryptutil::AesKey::default();
 
     let bufsize = param.fragment_size.get() as usize;
     let mut rawbuf = vec![0u8; bufsize];
-    let mut encbuf = vec![0u8; bufsize];
     let mut idx = 0u64;
     loop {
         let dst_path = dst_dir_path.join(&format!("{}.{:0>6}", rf.name, idx));
@@ -68,12 +67,9 @@ async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile
         }
 
         let rawbuf = &rawbuf[..rsize];
-        let encbuf = &mut encbuf[..rsize];
-        let mut tag: Tag = Default::default();
 
         // 96 bit = 12 byte, must generate new one every time
-        let nonce = cryptutil::generate_nonce();
-        cryptutil::encrypt(&key, &nonce, &[], rawbuf, encbuf, &mut tag);
+        let (nonce, encbuf) = cryptutil::encrypt_aes256gcm(&key, rawbuf)?;
 
         debug!(
             "plain: {}, nonce: {}, crypted: {}",
