@@ -1,3 +1,4 @@
+use core::fmt;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
@@ -12,6 +13,8 @@ use log::warn;
 use regex::{Match, Regex};
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, EnumMessage, EnumString};
+
+use crate::cryptutil;
 
 pub mod crypt;
 pub mod inbox;
@@ -35,7 +38,7 @@ pub fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
     TABLE.get_or_init(|| {
         let mut table: CommandMap = BTreeMap::new();
         table.insert("init", Box::new(init::entry));
-        table.insert("genkey", Box::new(key::entry));
+        table.insert("key", Box::new(key::entry));
         table.insert("inbox", Box::new(inbox::entry));
         table.insert("crypt", Box::new(crypt::entry));
 
@@ -52,7 +55,7 @@ struct Config {
     #[serde(default)]
     system: System,
     #[serde(default)]
-    crypt_key: CryptKey,
+    crypt: Crypt,
     #[serde(default)]
     repository: Repository,
 }
@@ -64,10 +67,48 @@ struct System {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct CryptKey {
-    /// bcrypt-ed password (prefix, cost, salt+hash).
-    /// salt = 16 B + hash = 23 B
-    bcrypt: Option<String>,
+enum Crypt {
+    #[default]
+    PlainText,
+    Argon2 {
+        key: Option<cryptutil::AesKey>,
+        salt: cryptutil::Argon2Salt,
+        m_cost: u32,
+        t_cost: u32,
+        p_cost: u32,
+    },
+}
+
+impl fmt::Display for Crypt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PlainText => {
+                write!(f, "PlainText (no encryption)")?;
+            }
+            Self::Argon2 {
+                key,
+                salt,
+                m_cost,
+                t_cost,
+                p_cost,
+            } => {
+                let salt_str = salt
+                    .iter()
+                    .fold(String::new(), |cur, b| cur + &format!("{:02x}", b));
+                writeln!(f, "AES key derived from passphrase by Argon2")?;
+                writeln!(f, "salt  : {salt_str}")?;
+                writeln!(f, "m_cost: {m_cost}")?;
+                writeln!(f, "t_cost: {t_cost}")?;
+                writeln!(f, "p_cost: {p_cost}")?;
+                if key.is_some() {
+                    write!(f, "key   : SAVED (able to check passphrase)")?;
+                } else {
+                    write!(f, "key   : NODATA (passphrase needed)")?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

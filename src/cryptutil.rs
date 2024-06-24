@@ -22,6 +22,7 @@ pub const ARGON2_PCOST: u32 = argon2::Params::DEFAULT_P_COST;
 
 pub type Argon2Salt = [u8; ARGON2_SALT_SIZE];
 
+/// (salt, m, t, p, key)
 pub fn aeskey_new_from_password(pwd: &str) -> (Argon2Salt, u32, u32, u32, AesKey) {
     let salt: Argon2Salt = generate_random();
     let m_cost = ARGON2_MCOST;
@@ -41,7 +42,7 @@ pub fn aeskey_from_password(
 ) -> Result<AesKey> {
     let mut res = AesKey::default();
 
-    let params = argon2::Params::new(m_cost, t_cost, p_cost, Some(AesKeySize))
+    let params = argon2::Params::new(m_cost, t_cost, p_cost, Some(AES_KEY_SIZE))
         .map_err(|err| anyhow!(err))?;
     let argon2 = Argon2::new(Default::default(), Default::default(), params);
     argon2
@@ -51,12 +52,11 @@ pub fn aeskey_from_password(
     Ok(res)
 }
 
-pub const AesKeySize: usize = 32;
-pub const AesNonceSize: usize = 12;
-pub const AesTagSize: usize = 16;
+pub const AES_KEY_SIZE: usize = 32;
+pub const AES_NONCE_SIZE: usize = 12;
 
-pub type AesKey = [u8; AesKeySize];
-pub type AesNonce = [u8; AesNonceSize];
+pub type AesKey = [u8; AES_KEY_SIZE];
+pub type AesNonce = [u8; AES_NONCE_SIZE];
 
 /// key = 32 (AES 256 bit)
 /// nonce = 12 (96 bit)

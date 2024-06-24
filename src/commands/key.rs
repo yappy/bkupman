@@ -6,20 +6,34 @@ use getopts::Options;
 use log::info;
 
 use super::Config;
-use crate::util;
+use crate::{
+    commands::{Crypt, CONFIG_FILE_NAME},
+    cryptutil, util,
+};
 
 fn process_genkey(mut config: Config) -> Result<Option<Config>> {
-    info!("Generate a new encryption key");
-    info!("Generate a new random salt, and make a bcrypt hash from passphase");
+    info!("Generate a new encrypt/decrypt key");
 
     let password = Password::new()
         .with_prompt("Passphrase")
         .allow_empty_password(true)
         .with_confirmation("Input again", "Passphrase mismatch")
         .interact()?;
-    info!("{}", password);
 
-    todo!("Generate crypt key");
+    let (salt, m_cost, t_cost, p_cost, key) = cryptutil::aeskey_new_from_password(&password);
+    config.crypt = Crypt::Argon2 {
+        key: Some(key),
+        salt,
+        m_cost,
+        t_cost,
+        p_cost,
+    };
+
+    info!("New salt and key created: {}", config.crypt);
+    info!(
+        "New AES en/decrypt key created: (Saved into {})",
+        CONFIG_FILE_NAME
+    );
 
     Ok(Some(config))
 }
