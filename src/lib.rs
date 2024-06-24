@@ -2,9 +2,9 @@ mod commands;
 mod cryptutil;
 mod util;
 
-use std::{fs::File, path::Path};
+use std::{fs::File};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use getopts::Options;
 use log::{error, info, LevelFilter};
 use simplelog::{
@@ -57,23 +57,8 @@ fn print_help_subcommands(program: &str, opts: &Options) {
     let brief = format!("Usage: {program} [options...] SUBCMD [options...]");
     println!("{}", opts.usage(&brief));
 
-    let table = commands::dispatch_table();
     println!("Subcommands:");
-    for &key in table.keys() {
-        println!("    {key}");
-    }
-}
-
-fn dispatch_subcommand(basedir: impl AsRef<Path>, argv: &[String]) -> Result<()> {
-    assert!(!argv.is_empty());
-
-    let table = commands::dispatch_table();
-    let argv0: &str = &argv[0];
-    let func = table
-        .get(argv0)
-        .ok_or(anyhow!("Subcommand not found: {argv0}"))?;
-
-    func(basedir.as_ref(), argv0, &argv[1..])
+    println!("{}", commands::subcommands_help());
 }
 
 pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
@@ -89,10 +74,12 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
     opts.optopt(
         "C",
         "directory",
-        "Set root directory for working",
+        "Set root directory",
         "DIRECTORY",
     );
-    opts.optflag("t", "test-mode", "Test mode (disable log)");
+    if cfg!(debug_assertions) {
+        opts.optflag("t", "test-mode", "Test mode (cargo test)");
+    }
     opts.optmulti("l", "log", "Add log file", "LOGFILE");
 
     let matches = opts.parse(args).context(USAGE_HINT)?;
@@ -120,7 +107,7 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
             ".".to_string()
         };
 
-        dispatch_subcommand(basedir, &matches.free)
+        commands::dispatch_subcommand(&basedir, &matches.free)
     };
 
     match work_main() {

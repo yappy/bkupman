@@ -3,15 +3,16 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
 use std::num::NonZeroU64;
-use std::sync::OnceLock;
+use std::str::FromStr;
 use std::{fs::OpenOptions, path::Path};
 
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use chrono::Local;
 use fs2::FileExt;
 use log::warn;
 use regex::{Match, Regex};
 use serde::{Deserialize, Serialize};
+use strum::{EnumIter, EnumMessage, EnumString, IntoEnumIterator};
 
 use crate::cryptutil;
 
@@ -28,23 +29,50 @@ const DIRNAME_CRYPT: &str = "crypt";
 
 const MD5EXT: &str = "md5sum";
 
-type CommandFunc = Box<dyn Fn(&Path, &str, &[String]) -> Result<()> + Send + Sync + 'static>;
-type CommandMap = BTreeMap<&'static str, CommandFunc>;
+#[derive(EnumString, EnumMessage, EnumIter)]
+enum CommandType {
+    #[strum(serialize = "init", message = "Initialize directory as repository")]
+    Init,
+    #[strum(serialize = "key", message = "Set encrypt/decrypt key")]
+    Key,
+    #[strum(serialize = "inbox", message = "Process new files in inbox/")]
+    Inbox,
+    #[strum(serialize = "crypt", message = "Split and encrypt files in repo/")]
+    Crypt,
 
-pub fn dispatch_table() -> &'static BTreeMap<&'static str, CommandFunc> {
-    static TABLE: OnceLock<CommandMap> = OnceLock::new();
+    #[strum(serialize = "test-file", message = "Create test file(s) into inbox/")]
+    TestFile,
+}
 
-    TABLE.get_or_init(|| {
-        let mut table: CommandMap = BTreeMap::new();
-        table.insert("init", Box::new(init::entry));
-        table.insert("key", Box::new(key::entry));
-        table.insert("inbox", Box::new(inbox::entry));
-        table.insert("crypt", Box::new(crypt::entry));
+pub fn dispatch_subcommand(basedir: impl AsRef<Path>, argv: &[String]) -> Result<()> {
+    assert!(!argv.is_empty());
 
-        table.insert("test-file", Box::new(test_file::entry));
+    let basedir = basedir.as_ref();
+    let cmd = &argv[0];
+    let args = &argv[1..];
 
-        table
-    })
+    let ctype = CommandType::from_str(cmd).context("Subcommand not found")?;
+
+    match ctype {
+        CommandType::Init => init::entry(basedir, cmd, args),
+        CommandType::Key => key::entry(basedir, cmd, args),
+        CommandType::Inbox => inbox::entry(basedir, cmd, args),
+        CommandType::Crypt => crypt::entry(basedir, cmd, args),
+        CommandType::TestFile => test_file::entry(basedir, cmd, args),
+    }
+}
+
+pub fn subcommands_help() -> String {
+    let mut help = String::new();
+    for ctype in CommandType::iter() {
+        help += &format!(
+            "{}\n    {}\n",
+            ctype.get_serializations()[0],
+            ctype.get_message().unwrap()
+        );
+    }
+
+    help
 }
 
 const CONFIG_VERSION: u32 = 1;
