@@ -141,6 +141,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "base64",
+ "bytes",
  "chrono",
  "dialoguer",
  "fs2",

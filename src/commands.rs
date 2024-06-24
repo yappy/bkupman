@@ -12,7 +12,6 @@ use fs2::FileExt;
 use log::warn;
 use regex::{Match, Regex};
 use serde::{Deserialize, Serialize};
-use strum::{EnumIter, EnumMessage, EnumString};
 
 use crate::cryptutil;
 
@@ -55,7 +54,7 @@ struct Config {
     #[serde(default)]
     system: System,
     #[serde(default)]
-    crypt: Crypt,
+    crypt: CryptType,
     #[serde(default)]
     repository: Repository,
 }
@@ -66,11 +65,11 @@ struct System {
     updated: String,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-enum Crypt {
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+enum CryptType {
     #[default]
     PlainText,
-    Argon2 {
+    Aes128GcmArgon2 {
         key: Option<cryptutil::AesKey>,
         salt: cryptutil::Argon2Salt,
         m_cost: u32,
@@ -79,13 +78,13 @@ enum Crypt {
     },
 }
 
-impl fmt::Display for Crypt {
+impl fmt::Display for CryptType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::PlainText => {
                 write!(f, "PlainText (no encryption)")?;
             }
-            Self::Argon2 {
+            Self::Aes128GcmArgon2 {
                 key,
                 salt,
                 m_cost,
@@ -126,34 +125,10 @@ struct RepositoryFile {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 struct CryptInfo {
-    ctype: CryptType,
+    crypt: CryptType,
     /// fragment count = [Self::total_size] + [Self::fragment_size]
     total_size: u64,
     fragment_size: NonZeroU64,
-}
-
-#[derive(
-    EnumString,
-    EnumMessage,
-    EnumIter,
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-)]
-enum CryptType {
-    #[strum(serialize = "plain", message = "plaintext (no encryption)")]
-    PlainText,
-    #[strum(
-        serialize = "aes",
-        message = "AES256-GCM (Advanced Encryption Standard, key=256bit, Galois/Counter Mode)"
-    )]
-    Aes128Gcm,
 }
 
 impl Default for System {

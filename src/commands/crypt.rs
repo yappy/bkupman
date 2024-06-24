@@ -1,12 +1,11 @@
 use std::num::NonZeroU64;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
+use bytes::{BufMut, BytesMut};
 use getopts::Options;
 use log::{debug, info};
-use strum::{EnumMessage, IntoEnumIterator};
 use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 
@@ -38,6 +37,23 @@ async fn process_file_plain(
 }
 
 async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) -> Result<()> {
+    let (key, salt, m_cost, t_cost, p_cost) = if let CryptType::Aes128GcmArgon2 {
+        key,
+        salt,
+        m_cost,
+        t_cost,
+        p_cost,
+    } = param.ctype
+    {
+        (key, salt, m_cost, t_cost, p_cost)
+    } else {
+        panic!();
+    };
+    if key.is_none() {
+        bail!("Encryption key is empty");
+    }
+    let key = key.unwrap();
+
     let src_path = param.repo_path.join(&tag).join(&rf.name);
     let dst_dir_path = param.crypt_path.join(&tag);
     info!(
@@ -50,10 +66,6 @@ async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile
 
     // source file
     let mut fin = tokio::fs::File::open(src_path).await?;
-
-    // keylen = 256 bit = 32 byte
-    // TODO: change to true key
-    let key = cryptutil::AesKey::default();
 
     let bufsize = param.fragment_size.get() as usize;
     let mut rawbuf = vec![0u8; bufsize];
@@ -68,19 +80,32 @@ async fn process_file_aes(param: Arc<TaskParam>, tag: String, rf: RepositoryFile
 
         let rawbuf = &rawbuf[..rsize];
 
-        // 96 bit = 12 byte, must generate new one every time
+        // use saved key
+        // nonce: 96 bit = 12 byte, must generate new one every time
         let (nonce, encbuf) = cryptutil::encrypt_aes256gcm(&key, rawbuf)?;
 
-        debug!(
-            "plain: {}, nonce: {}, crypted: {}",
-            rawbuf.len(),
-            nonce.len(),
-            encbuf.len()
-        );
         info!("To: {}", dst_path.display());
 
         let mut fout = tokio::fs::File::create(&dst_path).await?;
-        fout.write_all(&nonce).await?;
+
+        // Argon2 salt:16, m:4, t:4, p:4
+        // aes256-gcm nonce:12
+        // ciphertext (+ tag:16)
+        let mut header_buf = BytesMut::with_capacity(64);
+        header_buf.put(&salt[..]);
+        header_buf.put_u32_le(m_cost);
+        header_buf.put_u32_le(t_cost);
+        header_buf.put_u32_le(p_cost);
+        header_buf.put(&nonce[..]);
+
+        debug!(
+            "plain: {}, header: {}, crypted: {}",
+            rawbuf.len(),
+            header_buf.len(),
+            encbuf.len()
+        );
+
+        fout.write_all(&header_buf).await?;
         fout.write_all(&encbuf).await?;
 
         idx += 1;
@@ -100,7 +125,7 @@ async fn process_files(param: Arc<TaskParam>, files: &[(String, RepositoryFile)]
             tokio::spawn(async move {
                 match param.ctype {
                     CryptType::PlainText => process_file_plain(param, tag, rf).await,
-                    CryptType::Aes128Gcm => process_file_aes(param, tag, rf).await,
+                    CryptType::Aes128GcmArgon2 { .. } => process_file_aes(param, tag, rf).await,
                 }
             })
         })
@@ -120,14 +145,13 @@ async fn process_files(param: Arc<TaskParam>, files: &[(String, RepositoryFile)]
 fn process_crypt(
     dirpath: &Path,
     mut config: Config,
-    ctype: CryptType,
     fragment_size: NonZeroU64,
 ) -> Result<Option<Config>> {
     let repo_path = dirpath.join(super::DIRNAME_REPO);
     let crypt_path = dirpath.join(super::DIRNAME_CRYPT);
 
     let param = Arc::new(TaskParam {
-        ctype,
+        ctype: config.crypt.clone(),
         fragment_size,
         repo_path,
         crypt_path,
@@ -169,35 +193,16 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     const USAGE_HINT: &str = "--help or -h to show usage";
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
 
-    let types = CryptType::iter()
-        .map(|t| t.get_serializations()[0])
-        .collect::<Vec<_>>()
-        .join(", ");
-    let type_descs = CryptType::iter()
-        .map(|t| {
-            format!(
-                "    {:<5}: {}",
-                t.get_serializations()[0],
-                t.get_message().unwrap()
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
     let mut opts = Options::new();
     opts.optflag("h", "help", "Print this help");
-    opts.reqopt("t", "type", &format!("Encryption type ({types})"), "<TYPE>");
     opts.optopt("f", "flagment-size", "Split fragment size", "<SIZE>");
 
     if crate::util::find_option(&args, &["-h", "--help"]) {
         println!("{}", crate::util::create_help(cmd, DESC, &opts));
-        println!("Encryption Types:\n{type_descs}");
         return Ok(());
     }
     let matches = opts.parse(args).context(USAGE_HINT)?;
 
-    let typestr = matches.opt_str("t").unwrap();
-    let ctype = CryptType::from_str(&typestr).context("invalid crypt type")?;
     let fragment = matches.opt_str("f").unwrap_or(FRAGMENT_DEFAULT.to_string());
     let fragment = util::parse_size(&fragment)?;
     if fragment < FRAGMENT_MIN {
@@ -206,7 +211,7 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     let fragment = NonZeroU64::new(fragment).unwrap();
 
     super::process_with_config_lock(basedir, |basedir, config| {
-        process_crypt(basedir, config, ctype, fragment)
+        process_crypt(basedir, config, fragment)
     })?;
 
     Ok(())

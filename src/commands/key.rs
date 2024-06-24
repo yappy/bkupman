@@ -7,7 +7,7 @@ use log::info;
 
 use super::Config;
 use crate::{
-    commands::{Crypt, CONFIG_FILE_NAME},
+    commands::{CryptType, CONFIG_FILE_NAME},
     cryptutil, util,
 };
 
@@ -21,7 +21,7 @@ fn process_genkey(mut config: Config) -> Result<Option<Config>> {
         .interact()?;
 
     let (salt, m_cost, t_cost, p_cost, key) = cryptutil::aeskey_new_from_password(&password);
-    config.crypt = Crypt::Argon2 {
+    config.crypt = CryptType::Aes128GcmArgon2 {
         key: Some(key),
         salt,
         m_cost,

@@ -89,9 +89,14 @@ mod tests {
     #[test]
     fn test_password_hash_key() -> Result<()> {
         let pwd: &str = "password";
-        let (salt, m, t, p, key1) = aeskey_new_from_password(&pwd);
-        let key2 = aeskey_from_password(salt, m, t, p, pwd)?;
+
+        let (salt1, m, t, p, key1) = aeskey_new_from_password(&pwd);
+        let key2 = aeskey_from_password(salt1, m, t, p, pwd)?;
         assert_eq!(key1, key2);
+
+        let (salt3, _, _, _, key3) = aeskey_new_from_password(&pwd);
+        assert_ne!(salt1, salt3);
+        assert_ne!(key1, key3);
 
         Ok(())
     }
