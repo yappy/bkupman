@@ -23,6 +23,7 @@ pub mod key;
 pub mod test_file;
 
 const CONFIG_FILE_NAME: &str = "config.toml";
+const CRYPT_INFO_NAME: &str = "metadata.toml";
 const DIRNAME_INBOX: &str = "inbox";
 const DIRNAME_REPO: &str = "repo";
 const DIRNAME_CRYPT: &str = "crypt";
@@ -148,10 +149,10 @@ struct Repository {
 struct RepositoryFile {
     name: String,
     md5name: String,
-    crypt: Option<CryptInfo>,
+    crypt: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CryptInfo {
     crypt: CryptType,
     /// fragment count = [Self::total_size] + [Self::fragment_size]

@@ -2,6 +2,7 @@ use std::{fs, path::Path};
 
 use anyhow::{bail, Context, Result};
 use getopts::Options;
+use log::info;
 
 use super::Config;
 
@@ -24,30 +25,31 @@ fn init_dir(dirpath: impl AsRef<Path>, force: bool) -> Result<()> {
     let config = Config::default();
     let tomlpath = dirpath.as_ref().join(super::CONFIG_FILE_NAME);
 
-    println!("Create dir: {}", super::DIRNAME_INBOX);
+    info!("Create dir: {}", super::DIRNAME_INBOX);
     super::with_force(force, || {
         fs::create_dir(dirpath.as_ref().join(super::DIRNAME_INBOX))
             .with_context(|| format!("Failed to create dir: {}", super::DIRNAME_INBOX))
     })?;
-    println!("Create dir: {}", super::DIRNAME_REPO);
+    info!("Create dir: {}", super::DIRNAME_REPO);
     super::with_force(force, || {
         fs::create_dir(dirpath.as_ref().join(super::DIRNAME_REPO))
             .with_context(|| format!("Failed to create dir: {}", super::DIRNAME_REPO))
     })?;
-    println!("Create dir: {}", super::DIRNAME_CRYPT);
+    info!("Create dir: {}", super::DIRNAME_CRYPT);
     super::with_force(force, || {
         fs::create_dir(dirpath.as_ref().join(super::DIRNAME_CRYPT))
             .with_context(|| format!("Failed to create dir: {}", super::DIRNAME_CRYPT))
     })?;
 
-    println!("Create and write: {}", tomlpath.to_string_lossy());
+    info!("Create and write: {}", tomlpath.to_string_lossy());
     let toml = toml::to_string(&config).unwrap();
     super::with_force(force, || {
         fs::write(&tomlpath, toml)
             .with_context(|| format!("Failed to write: {}", tomlpath.to_string_lossy()))
     })?;
 
-    println!("OK");
+    info!("OK");
+    info!("[HINT] Execute `bkupman key` to setup encryption");
     Ok(())
 }
 

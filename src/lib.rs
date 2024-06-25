@@ -2,7 +2,7 @@ mod commands;
 mod cryptutil;
 mod util;
 
-use std::{fs::File};
+use std::fs::File;
 
 use anyhow::{bail, Context, Result};
 use getopts::Options;
@@ -71,12 +71,7 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
     opts.parsing_style(getopts::ParsingStyle::StopAtFirstFree);
     // main command arguments
     opts.optflag("h", "help", "Print this help");
-    opts.optopt(
-        "C",
-        "directory",
-        "Set root directory",
-        "DIRECTORY",
-    );
+    opts.optopt("C", "directory", "Set root directory", "DIRECTORY");
     if cfg!(debug_assertions) {
         opts.optflag("t", "test-mode", "Test mode (cargo test)");
     }
