@@ -92,8 +92,8 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     opts.optopt("c", "count", "File count (default=1)", "COUNT");
     opts.optflag("r", "random", "Fill with random data (default=false)");
 
-    if crate::util::find_option(&args, &["-h", "--help"]) {
-        println!("{}", util::create_help(cmd, DESC, &opts));
+    if util::find_option(&args, &["-h", "--help"]) {
+        println!("{}", util::create_help(cmd, DESC, &opts, None));
         return Ok(());
     }
     let matches = opts.parse(args).context(USAGE_HINT)?;

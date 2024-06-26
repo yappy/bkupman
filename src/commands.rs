@@ -94,17 +94,45 @@ struct System {
     updated: String,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    EnumString,
+    EnumMessage,
+    EnumIter,
+)]
 enum CryptType {
     #[default]
+    #[strum(
+        serialize = "plain",
+        message = "PlainText",
+        detailed_message = "No encryption."
+    )]
     PlainText,
+    #[strum(
+        serialize = "aes",
+        message = "AES128GCM-Argon2",
+        detailed_message = "AES (symmetric-key block cipher) 128 bit (key-length) Galois/Counter Mode (+tampering detection) encryption."
+    )]
     Aes128GcmArgon2 {
         key: Option<cryptutil::AesKey>,
-        salt: cryptutil::Argon2Salt,
-        m_cost: u32,
-        t_cost: u32,
-        p_cost: u32,
+        argon2: Aes128GcmArgon2Param,
     },
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct Aes128GcmArgon2Param {
+    salt: cryptutil::Argon2Salt,
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
 }
 
 impl fmt::Display for CryptType {
@@ -113,21 +141,17 @@ impl fmt::Display for CryptType {
             Self::PlainText => {
                 write!(f, "PlainText (no encryption)")?;
             }
-            Self::Aes128GcmArgon2 {
-                key,
-                salt,
-                m_cost,
-                t_cost,
-                p_cost,
-            } => {
-                let salt_str = salt
+            Self::Aes128GcmArgon2 { key, argon2: param } => {
+                let salt_str = param
+                    .salt
                     .iter()
                     .fold(String::new(), |cur, b| cur + &format!("{:02x}", b));
-                writeln!(f, "AES key derived from passphrase by Argon2")?;
+                writeln!(f, "AES")?;
+                writeln!(f, "Key derived from passphrase by Argon2")?;
                 writeln!(f, "salt  : {salt_str}")?;
-                writeln!(f, "m_cost: {m_cost}")?;
-                writeln!(f, "t_cost: {t_cost}")?;
-                writeln!(f, "p_cost: {p_cost}")?;
+                writeln!(f, "m_cost: {}", param.m_cost)?;
+                writeln!(f, "t_cost: {}", param.t_cost)?;
+                writeln!(f, "p_cost: {}", param.p_cost)?;
                 if key.is_some() {
                     write!(f, "key   : SAVED (able to check passphrase)")?;
                 } else {

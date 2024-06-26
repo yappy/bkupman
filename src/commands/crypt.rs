@@ -11,8 +11,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 
 use super::{Config, RepositoryFile};
-use crate::commands::{CryptInfo, CryptType};
-use crate::cryptutil::{AesKey, Argon2Salt};
+use crate::commands::{Aes128GcmArgon2Param, CryptInfo, CryptType};
+use crate::cryptutil::AesKey;
 use crate::{cryptutil, util};
 
 /*
@@ -45,10 +45,7 @@ async fn process_file_aes(
     rf: RepositoryFile,
     fragment_size: NonZeroU64,
     key: AesKey,
-    salt: Argon2Salt,
-    m_cost: u32,
-    t_cost: u32,
-    p_cost: u32,
+    argon2: Aes128GcmArgon2Param,
 ) -> Result<()> {
     // source file
     let mut fin = tokio::fs::File::open(src_file_path).await?;
@@ -79,10 +76,10 @@ async fn process_file_aes(
         // aes256-gcm nonce:12
         // ciphertext (+ tag:16)
         let mut header_buf = BytesMut::with_capacity(64);
-        header_buf.put(&salt[..]);
-        header_buf.put_u32_le(m_cost);
-        header_buf.put_u32_le(t_cost);
-        header_buf.put_u32_le(p_cost);
+        header_buf.put(&argon2.salt[..]);
+        header_buf.put_u32_le(argon2.m_cost);
+        header_buf.put_u32_le(argon2.t_cost);
+        header_buf.put_u32_le(argon2.p_cost);
         header_buf.put(&nonce[..]);
 
         debug!(
@@ -101,13 +98,8 @@ async fn process_file_aes(
 
     // save crypt matadata
     let info = CryptInfo {
-        crypt: CryptType::Aes128GcmArgon2 {
-            key: None,
-            salt,
-            m_cost,
-            t_cost,
-            p_cost,
-        },
+        // don't save the AES key
+        crypt: CryptType::Aes128GcmArgon2 { key: None, argon2 },
         total_size,
         fragment_size,
     };
@@ -147,15 +139,9 @@ async fn process_file(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) ->
         dst_dir_path.display()
     );
 
-    match param.ctype {
+    match &param.ctype {
         CryptType::PlainText => process_file_plain(param, tag, rf).await,
-        CryptType::Aes128GcmArgon2 {
-            key,
-            salt,
-            m_cost,
-            t_cost,
-            p_cost,
-        } => {
+        CryptType::Aes128GcmArgon2 { key, argon2 } => {
             let key = key.ok_or_else(|| anyhow!("Encryption key is empty"))?;
             process_file_aes(
                 &src_file_path,
@@ -164,10 +150,7 @@ async fn process_file(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) ->
                 rf,
                 param.fragment_size,
                 key,
-                salt,
-                m_cost,
-                t_cost,
-                p_cost,
+                argon2.clone(),
             )
             .await
         }
@@ -253,8 +236,8 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     opts.optflag("h", "help", "Print this help");
     opts.optopt("f", "flagment-size", "Split fragment size", "<SIZE>");
 
-    if crate::util::find_option(&args, &["-h", "--help"]) {
-        println!("{}", crate::util::create_help(cmd, DESC, &opts));
+    if util::find_option(&args, &["-h", "--help"]) {
+        println!("{}", crate::util::create_help(cmd, DESC, &opts, None));
         return Ok(());
     }
     let matches = opts.parse(args).context(USAGE_HINT)?;

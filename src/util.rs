@@ -18,8 +18,13 @@ pub fn find_option(args: &[impl AsRef<str>], optstrs: &[&str]) -> bool {
     false
 }
 
-pub fn create_help(program: &str, desc: &str, opts: &Options) -> String {
-    let brief = format!("Usage: {program} [options]\n{desc}");
+pub fn create_help(program: &str, desc: &str, opts: &Options, free: Option<&str>) -> String {
+    let free = if let Some(free) = free {
+        format!(" {free}")
+    } else {
+        String::default()
+    };
+    let brief = format!("Usage: {program} [options...]{free}\n{desc}");
     opts.usage(&brief)
 }
 

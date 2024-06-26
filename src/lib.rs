@@ -102,7 +102,7 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
             ".".to_string()
         };
 
-        commands::dispatch_subcommand(&basedir, &matches.free)
+        commands::dispatch_subcommand(basedir, &matches.free)
     };
 
     match work_main() {
@@ -112,8 +112,8 @@ pub fn entry_point(argv: &[impl AsRef<str>]) -> Result<()> {
         }
         Err(err) => {
             // don't return from main()
-            error!("Command failed");
             error!("{:#}", err);
+            error!("Command failed");
             std::process::exit(1);
         }
     }

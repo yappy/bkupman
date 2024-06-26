@@ -4,6 +4,8 @@ use anyhow::{bail, Context, Result};
 use getopts::Options;
 use log::info;
 
+use crate::util;
+
 use super::Config;
 
 fn check_empty_dir(dirpath: impl AsRef<Path>) -> Result<()> {
@@ -62,8 +64,8 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     opts.optflag("h", "help", "Print this help");
     opts.optflag("f", "force", "Ignore errors");
 
-    if crate::util::find_option(&args, &["-h", "--help"]) {
-        println!("{}", crate::util::create_help(cmd, DESC, &opts));
+    if util::find_option(&args, &["-h", "--help"]) {
+        println!("{}", crate::util::create_help(cmd, DESC, &opts, None));
         return Ok(());
     }
     let matches = opts.parse(args).context(USAGE_HINT)?;

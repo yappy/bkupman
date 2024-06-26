@@ -202,8 +202,8 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "Print this help");
 
-    if crate::util::find_option(&args, &["-h", "--help"]) {
-        println!("{}", crate::util::create_help(cmd, DESC, &opts));
+    if util::find_option(&args, &["-h", "--help"]) {
+        println!("{}", crate::util::create_help(cmd, DESC, &opts, None));
         return Ok(());
     }
     let _matches = opts.parse(args).context(USAGE_HINT)?;
