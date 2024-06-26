@@ -51,7 +51,7 @@ fn init_dir(dirpath: impl AsRef<Path>, force: bool) -> Result<()> {
     })?;
 
     info!("OK");
-    info!("[HINT] Execute `bkupman key` to setup encryption");
+    info!("[HINT] Execute `bkupman key [CRYPT_TYPE]` to setup encryption");
     Ok(())
 }
 

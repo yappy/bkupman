@@ -229,6 +229,24 @@ fn process_with_config_lock(
     Ok(())
 }
 
+fn process_with_config_lock_force_save(
+    dirpath: impl AsRef<Path>,
+    proc: impl FnOnce(&Path, Config) -> (Option<Config>, Result<()>),
+) -> Result<()> {
+    let mut saved_res = None;
+
+    process_with_config_lock(dirpath, |path, config| {
+        let (config, res) = proc(path, config);
+        saved_res.replace(res);
+        // return ok and save config
+        Ok(config)
+    })
+    .unwrap();
+
+    // return err after saving config
+    saved_res.take().unwrap()
+}
+
 fn with_force(force: bool, proc: impl FnOnce() -> Result<()>) -> Result<()> {
     let res = proc();
     if force {

@@ -116,7 +116,8 @@ async fn process_file_aes(
     Ok(())
 }
 
-async fn process_file(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) -> Result<()> {
+/// Return tag if succeeded
+async fn process_file(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) -> Result<String> {
     let src_file_path = param.repo_path.join(&tag).join(&rf.name);
     let dst_dir_path = param.crypt_path.join(&tag);
     let dst_info_path = dst_dir_path.join(super::CRYPT_INFO_NAME);
@@ -140,7 +141,7 @@ async fn process_file(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) ->
     );
 
     match &param.ctype {
-        CryptType::PlainText => process_file_plain(param, tag, rf).await,
+        CryptType::PlainText => process_file_plain(param, tag.clone(), rf).await?,
         CryptType::Aes128GcmArgon2 { key, argon2 } => {
             let key = key.ok_or_else(|| anyhow!("Encryption key is empty"))?;
             process_file_aes(
@@ -152,12 +153,17 @@ async fn process_file(param: Arc<TaskParam>, tag: String, rf: RepositoryFile) ->
                 key,
                 argon2.clone(),
             )
-            .await
+            .await?
         }
     }
+
+    Ok(tag)
 }
 
-async fn process_files(param: Arc<TaskParam>, files: &[(String, RepositoryFile)]) {
+async fn process_files(
+    param: Arc<TaskParam>,
+    files: &[(String, RepositoryFile)],
+) -> (Result<()>, Vec<String>) {
     info!("{} files to be processed", files.len());
     let handles: Vec<_> = files
         .iter()
@@ -170,22 +176,37 @@ async fn process_files(param: Arc<TaskParam>, files: &[(String, RepositoryFile)]
         })
         .collect();
 
+    let mut succeeded_tags = vec![];
+    let mut failed = 0;
     for h in handles {
         // JoinError happens only if cancel or panic
         match h.await.unwrap() {
-            Ok(()) => {}
+            Ok(tag) => {
+                succeeded_tags.push(tag);
+            }
             Err(err) => {
                 println!("{:#}", err);
+                failed += 1;
             }
         }
     }
+    info!("Succeeded: {}", succeeded_tags.len());
+    info!("Failed   : {}", failed);
+
+    let res = if failed == 0 {
+        Ok(())
+    } else {
+        Err(anyhow!("One or more errors occurred"))
+    };
+
+    (res, succeeded_tags)
 }
 
 fn process_crypt(
     dirpath: &Path,
     mut config: Config,
     fragment_size: NonZeroU64,
-) -> Result<Option<Config>> {
+) -> (Option<Config>, Result<()>) {
     let repo_path = dirpath.join(super::DIRNAME_REPO);
     let crypt_path = dirpath.join(super::DIRNAME_CRYPT);
 
@@ -215,13 +236,20 @@ fn process_crypt(
         })
         .collect();
 
-    let rt = Runtime::new()?;
-    rt.block_on(process_files(param, &latest_files_wo_crypt));
+    let rt = Runtime::new().unwrap();
+    let (res, succeeded_tags) = rt.block_on(process_files(param, &latest_files_wo_crypt));
     drop(rt);
 
     // update toml
+    for tag in succeeded_tags.iter() {
+        let ents = config.repository.entries.get_mut(tag).unwrap();
+        let mut rf = ents.pop_first().unwrap();
+        rf.0.crypt = true;
+        ents.insert(rf);
+    }
     config.system.update();
-    Ok(Some(config))
+
+    (Some(config), res)
 }
 
 pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
@@ -249,7 +277,7 @@ pub fn entry(basedir: &Path, cmd: &str, args: &[String]) -> Result<()> {
     }
     let fragment = NonZeroU64::new(fragment).unwrap();
 
-    super::process_with_config_lock(basedir, |basedir, config| {
+    super::process_with_config_lock_force_save(basedir, |basedir, config| {
         process_crypt(basedir, config, fragment)
     })?;
 
